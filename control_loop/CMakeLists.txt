@@ -14,20 +14,14 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 
 # 编译可执行文件
-add_executable(control_loop_node src/control_loop_node.cpp)
-
-# 设置目标依赖
-ament_target_dependencies(
-  control_loop_node
-  rclcpp
-  std_msgs
-  tf2_geometry_msgs
-  nav_msgs
-)
+add_executable(control_loop_node_250517 src/control_loop_node_250517.cpp)
+ament_target_dependencies(control_loop_node_250517
+  rclcpp std_msgs nav_msgs tf2_geometry_msgs)
 
 # 安装
 install(
-  TARGETS control_loop_node
+  TARGETS 
+    control_loop_node_250517 
   DESTINATION lib/${PROJECT_NAME}
 )
 

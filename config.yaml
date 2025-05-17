@@ -11,13 +11,13 @@ bt_imu_node:
     WTSDCL: "WTSDCL"
     bt_imu_link: "bt_imu_link"
 
-# 控制节点配置
-control_loop_node:
+control_loop_node_250517:
   ros__parameters:
     # 输入话题名
-    TARGET_ANGLE_TOPIC:  "SMX/TargetImageAngle"
-    ODOM_TOPIC:          "SMX/Odom"
-    GIMBAL_STATE_TOPIC:  "SMX/GimbalState"
+    TARGET_ANGLE_TOPIC:  "SMX/TargetAngle"
+    ANGLE_ERROR_TOPIC:   "SMX/TargetImageAngle"
+    VEHICLE_ANGLE_TOPIC: "SMX/Odom"
+    GIMBAL_ANGLE_TOPIC:  "SMX/GimbalState"
     # 输出话题名
-    SPORT_CMD_TOPIC:     "SMX/SportCmd"
-    JOY_CMD_TOPIC:       "SMX/JoyFloatCmd"
+    VEHICLE_CMD_TOPIC:   "SMX/SportCmd"
+    GIMBAL_CMD_TOPIC:    "SMX/JoyFloatCmd"
