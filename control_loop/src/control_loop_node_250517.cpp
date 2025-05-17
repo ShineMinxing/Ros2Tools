@@ -1,5 +1,6 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
+#include "std_msgs/msg/string.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h> 
 #include <array>
@@ -22,6 +23,8 @@ public:
       "VEHICLE_ANGLE_TOPIC", "NoYamlRead/Odom");
     gimbal_angle_topic_ = this->declare_parameter<std::string>(
       "GIMBAL_ANGLE_TOPIC", "NoYamlRead/GimbalState");
+    angle_reset_topic_ = this->declare_parameter<std::string>(
+      "ANGLE_RESET_TOPIC", "NoYamlRead/JoyStringCmd");
     vehicle_cmd_topic_ = this->declare_parameter<std::string>(
       "VEHICLE_CMD_TOPIC", "NoYamlRead/SportCmd");
     gimbal_cmd_topic_ = this->declare_parameter<std::string>(
@@ -31,6 +34,7 @@ public:
     target_angle_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
       target_angle_topic_, 10,
       std::bind(&ControlLoopNode::target_angle_callback, this, std::placeholders::_1));
+    last_target_angle_time_ = this->now() - rclcpp::Duration::from_seconds(1.0);
 
     angle_error_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
       angle_error_topic_, 10,
@@ -43,6 +47,10 @@ public:
     gimbal_angle_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
       gimbal_angle_topic_, 10,
       std::bind(&ControlLoopNode::gimbal_angle_callback, this, std::placeholders::_1));
+      
+    angle_reset_sub_ = create_subscription<std_msgs::msg::String>(
+      angle_reset_topic_, 10,
+      std::bind(&ControlLoopNode::angle_reset_callback, this, std::placeholders::_1));
 
     // ===== 发布 =====
     vehicle_action_pub_ = create_publisher<std_msgs::msg::Float64MultiArray>(
@@ -67,19 +75,46 @@ private:
   {
     if (msg->data.size() >= 3) {
 
-      roll_target  = msg->data[0] * M_PI / 180.0;
-      pitch_target = msg->data[1] * M_PI / 180.0;
-      yaw_target   = msg->data[2] * M_PI / 180.0;
+      static double last_yaw_target = 0;
+
+      auto now = this->now();
+      if ((now - last_target_angle_time_).seconds() < (1.0 / 15.0)) {
+        return;
+      }
+      last_target_angle_time_ = now;
 
       roll_optic  = roll_gimbal + roll_vehicle;
       pitch_optic = pitch_gimbal + pitch_vehicle;
       yaw_optic   = yaw_gimbal + yaw_vehicle;
 
-      roll_error  = roll_target - roll_optic;
-      pitch_error = pitch_target - pitch_optic;
-      yaw_error   = yaw_target - yaw_optic;
+      roll_target  = -msg->data[0] * M_PI / 180.0;
+      pitch_target = -msg->data[1] * M_PI / 180.0;
+      yaw_target   = msg->data[2] * M_PI / 180.0;
+      
+      if(last_yaw_target<-1&&yaw_target>1)
+        yaw_target_correct -= 1;
+      if(last_yaw_target>1&&yaw_target<-1)
+        yaw_target_correct += 1;
+      last_yaw_target = yaw_target;
 
-      control_loop_function();
+      roll_error  = roll_target - roll_target_init - roll_optic;
+      pitch_error = pitch_target - pitch_target_init - pitch_optic;
+      yaw_error   = yaw_target - yaw_target_init - yaw_optic + yaw_target_correct * 2 * M_PI;
+
+      RCLCPP_INFO(get_logger(), "control_loop_node_250517 started.\n"
+        "  roll_e: %lf, pitch_e: %lf, yaw_e: %lf,\n"
+        "  roll_gimbal: %lf, pitch_gimbal: %lf, yaw_gimbal: %lf,\n"
+        "  roll_vehicle: %lf, pitch_vehicle: %lf, yaw_vehicle: %lf.\n"
+        "  roll_error: %lf, pitch_error: %lf, yaw_error: %lf,\n",
+        roll_target - roll_target_init,
+        pitch_target - pitch_target_init,
+        yaw_target - yaw_target_init + yaw_target_correct * 2 * M_PI,
+        roll_gimbal, pitch_gimbal, yaw_gimbal,
+        roll_vehicle, pitch_vehicle, yaw_vehicle,
+        roll_error, pitch_error, yaw_error);
+
+      if(gimbal_motion_enable)
+        control_loop_function();
     }
   }
 
@@ -98,7 +133,8 @@ private:
       pitch_target = pitch_optic + pitch_error;
       yaw_target   = yaw_optic + yaw_error;
 
-      control_loop_function();
+      if(gimbal_motion_enable)
+        control_loop_function();
     }
   }
 
@@ -120,6 +156,28 @@ private:
       roll_gimbal  = msg->data[0] * M_PI / 180.0;
       pitch_gimbal = msg->data[1] * M_PI / 180.0;
       yaw_gimbal   = msg->data[2] * M_PI / 180.0;
+    }
+  }
+
+  void angle_reset_callback(const std_msgs::msg::String::SharedPtr msg)
+  {
+    if (msg->data == "Gimbal Angle Reset")
+    {
+      roll_target_init  = roll_target - roll_optic;
+      pitch_target_init = pitch_target - pitch_optic;
+      yaw_target_init   = yaw_target - yaw_optic;
+
+      yaw_target_correct = 0;
+
+      RCLCPP_INFO(get_logger(), "Default gimbal angle is reset.");
+    }
+    if (msg->data == "Gimbal Control Enable Change")
+    {
+      if(gimbal_motion_enable)
+        gimbal_motion_enable = 0;
+      else
+        gimbal_motion_enable = 1;
+      RCLCPP_INFO(get_logger(), "Gimbal control enable is changed.");
     }
   }
 
@@ -151,23 +209,23 @@ private:
       robot_posture_pitch = 0;
     }
 
-    // 姿态I控制器
-    if (std::fabs(yaw_target - yaw_vehicle) > 0.3 || std::fabs(pitch_target - pitch_vehicle) > 0.3)
-      robot_posture_enable = 1;
-    if (robot_posture_enable) {
-      robot_posture_yaw   =std::clamp(robot_posture_yaw+ (yaw_target-yaw_vehicle)*0.05, -0.5,0.5);
-      robot_posture_pitch =std::clamp(robot_posture_pitch+(pitch_target-pitch_vehicle)*0.05,-0.5,0.5);
-    }
-    vehicle_action_pub_fun(22232400, robot_posture_yaw, robot_posture_pitch,0,0);
-
     // 运动P控制器
-    if (std::fabs(yaw_target - yaw_vehicle) > 1.0 && dt.count() < 0.5) {
+    if (std::fabs(yaw_error + yaw_gimbal) > 1.0 && dt.count() < 0.5) {
       robot_motion_enable = 1;
-      robot_motion_yaw = std::clamp((yaw_target - yaw_vehicle)*1.0, -1.0, 1.0);
+      robot_motion_yaw = std::clamp((yaw_error + yaw_gimbal)*0.3, -1.0, 1.0);
       vehicle_action_pub_fun(25202123, 0, 0, robot_motion_yaw, 0);
     } else if (robot_motion_enable > 0) {
       vehicle_action_pub_fun(16170000, 0, 0, 0, 0);
       robot_motion_enable = 0;
+    }
+
+    // 姿态I控制器
+    if (std::fabs(yaw_error + yaw_gimbal) > 0.3 || std::fabs(pitch_error + pitch_gimbal) > 0.3)
+      robot_posture_enable = 1;
+    if (robot_posture_enable) {
+      robot_posture_yaw   =std::clamp(robot_posture_yaw+ (yaw_error + yaw_gimbal)*0.05, -0.5,0.5);
+      robot_posture_pitch =std::clamp(robot_posture_pitch+(pitch_error + pitch_gimbal)*0.05,-0.5,0.5);
+      vehicle_action_pub_fun(22232400, robot_posture_yaw, robot_posture_pitch,0,0);
     }
   }
 
@@ -177,7 +235,6 @@ private:
     out.data = {code, p1, p2, p3, p4};
     vehicle_action_pub_->publish(out);
   }
-
 
   void gimbal_action_pub_fun(double code, double p1, double p2)
   {
@@ -191,19 +248,23 @@ private:
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr angle_error_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr          vehicle_angle_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr gimbal_angle_sub_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr            angle_reset_sub_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr    vehicle_action_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr    gimbal_action_pub_;
 
+  rclcpp::Time last_target_angle_time_;
+
   // Parameters
-  std::string target_angle_topic_, angle_error_topic_, vehicle_angle_topic_, gimbal_angle_topic_, vehicle_cmd_topic_, gimbal_cmd_topic_;
+  std::string target_angle_topic_, angle_error_topic_, vehicle_angle_topic_, gimbal_angle_topic_, vehicle_cmd_topic_, gimbal_cmd_topic_, angle_reset_topic_;
 
   // State variables
   double roll_target=0, pitch_target=0, yaw_target=0;
+  double roll_target_init=0, pitch_target_init=0, yaw_target_init=0, yaw_target_correct=0;
   double roll_optic=0, pitch_optic=0, yaw_optic=0;
   double roll_error=0, pitch_error=0, yaw_error=0;
   double roll_gimbal=0, pitch_gimbal=0, yaw_gimbal=0;
   double roll_vehicle=0, pitch_vehicle=0, yaw_vehicle=0;
-  int robot_motion_enable=0, robot_posture_enable=0;
+  int gimbal_motion_enable = 0, robot_motion_enable=0, robot_posture_enable=0;
   double robot_posture_roll=0, robot_posture_pitch=0, robot_posture_yaw=0;
   double robot_motion_roll=0, robot_motion_pitch=0, robot_motion_yaw=0;
 };

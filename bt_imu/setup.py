@@ -9,8 +9,6 @@ setup(
     install_requires=[
         'setuptools',
         'bleak',
-        'rclpy',
-        'sensor_msgs',
     ],
     zip_safe=True,
     author='your_name',

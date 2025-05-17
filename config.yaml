@@ -7,17 +7,19 @@ bt_imu_node:
     G_SCA: 156.8
     GYRO_SCA: 2000
     EULER_SCA: 180
-    SMX/BTIMU: "SMX/BTIMU"
+    BT_ANGLE: "SMX/BTAngle"
+    BT_IMU: "SMX/BTIMU"
     WTSDCL: "WTSDCL"
     bt_imu_link: "bt_imu_link"
 
 control_loop_node_250517:
   ros__parameters:
     # 输入话题名
-    TARGET_ANGLE_TOPIC:  "SMX/TargetAngle"
+    TARGET_ANGLE_TOPIC:  "SMX/BTAngle"
     ANGLE_ERROR_TOPIC:   "SMX/TargetImageAngle"
     VEHICLE_ANGLE_TOPIC: "SMX/Odom"
     GIMBAL_ANGLE_TOPIC:  "SMX/GimbalState"
+    ANGLE_RESET_TOPIC:   "SMX/JoyStringCmd"
     # 输出话题名
     VEHICLE_CMD_TOPIC:   "SMX/SportCmd"
     GIMBAL_CMD_TOPIC:    "SMX/JoyFloatCmd"

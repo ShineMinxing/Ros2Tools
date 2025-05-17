@@ -7,6 +7,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from sensor_msgs.msg import Imu
+from std_msgs.msg import Float64MultiArray  # ← 新增
 
 # ----------------------------------------------------------
 # 1. 读取 YAML 并生成 parameter_overrides
@@ -26,19 +27,23 @@ param_overrides = [Parameter(k, value=v) for k, v in yaml_params.items()]
 # ----------------------------------------------------------
 class BTIMUNode(Node):
     def __init__(self, **kwargs):
-        # 自动根据 overrides 声明参数
         kwargs.setdefault('parameter_overrides', param_overrides)
         kwargs.setdefault('automatically_declare_parameters_from_overrides', True)
         super().__init__('bt_imu_node', **kwargs)
 
-        # 把参数读进 cfg
+        # 读取参数到 cfg
         p = self.get_parameter
         self.cfg = {name: p(name).value for name in yaml_params}
 
-        # 发布器
-        self.pub = self.create_publisher(Imu, self.cfg['SMX/BTIMU'], 10)
+        # 创建两个发布器
+        # 1) 原有 IMU 发布器
+        self.pub_imu = self.create_publisher(
+            Imu, self.cfg['BT_IMU'], 10)
+        # 2) 新增 Roll/Pitch/Yaw 发布器
+        self.pub_ang = self.create_publisher(
+            Float64MultiArray, self.cfg['BT_ANGLE'], 10)
 
-        # BLE 循环线程
+        # BLE 缓冲与循环
         self._buf = bytearray()
         ble_loop = asyncio.new_event_loop()
         threading.Thread(target=ble_loop.run_forever, daemon=True).start()
@@ -62,12 +67,10 @@ class BTIMUNode(Node):
             notify_uuid = self.cfg['NOTIFY_UUID']
             notify_char = client.services.get_characteristic(notify_uuid)
             if notify_char is None:
-                # 回退：自动遍历
                 for svc in await client.get_services():
                     notify_char = next((c for c in svc.characteristics
                                         if 'notify' in c.properties), None)
-                    if notify_char:
-                        break
+                    if notify_char: break
             if notify_char is None:
                 self.get_logger().error('未找到 Notify 特征'); return
 
@@ -90,22 +93,30 @@ class BTIMUNode(Node):
             self._buf = self._buf[cfg['FRAME_LEN']:]
             self.parse_frame(frame)
 
-    # ---------- 解析 IMU 帧 ----------
+    # ---------- 解析 IMU 帧 & 发布 ----------
     def parse_frame(self, d: bytes):
         c = self.cfg
         s16 = lambda o: int.from_bytes(d[o:o+2], 'little', signed=True)
+
+        # 解算加速度与角速度
         ax, ay, az = (s16(2)/32768*c['G_SCA'],
                       s16(4)/32768*c['G_SCA'],
                       s16(6)/32768*c['G_SCA'])
         wx = s16( 8)/32768*c['GYRO_SCA'] * math.pi/180
         wy = s16(10)/32768*c['GYRO_SCA'] * math.pi/180
         wz = s16(12)/32768*c['GYRO_SCA'] * math.pi/180
+
+        # 解算欧拉角
         roll_deg  = s16(14)/32768*c['EULER_SCA']
         pitch_deg = s16(16)/32768*c['EULER_SCA']
         yaw_deg   = s16(18)/32768*c['EULER_SCA']
 
-        self.get_logger().info(f"R:{roll_deg:.2f} P:{pitch_deg:.2f} Y:{yaw_deg:.2f}")
+        # 发布 Roll/Pitch/Yaw
+        ang_msg = Float64MultiArray()
+        ang_msg.data = [roll_deg, pitch_deg, yaw_deg]
+        self.pub_ang.publish(ang_msg)
 
+        # 计算四元数
         roll, pitch, yaw = map(math.radians, (roll_deg, pitch_deg, yaw_deg))
         cy, sy = math.cos(yaw/2), math.sin(yaw/2)
         cp, sp = math.cos(pitch/2), math.sin(pitch/2)
@@ -115,14 +126,22 @@ class BTIMUNode(Node):
         qy = cr*sp*cy + sr*cp*sy
         qz = cr*cp*sy - sr*sp*cy
 
+        # 发布标准 IMU 消息
         imu = Imu()
         imu.header.stamp = self.get_clock().now().to_msg()
         imu.header.frame_id = c['bt_imu_link']
-        imu.linear_acceleration.x, imu.linear_acceleration.y, imu.linear_acceleration.z = ax, ay, az
-        imu.angular_velocity.x, imu.angular_velocity.y, imu.angular_velocity.z = wx, wy, wz
-        imu.orientation.w, imu.orientation.x, imu.orientation.y, imu.orientation.z = qw, qx, qy, qz
+        imu.linear_acceleration.x = ax
+        imu.linear_acceleration.y = ay
+        imu.linear_acceleration.z = az
+        imu.angular_velocity.x = wx
+        imu.angular_velocity.y = wy
+        imu.angular_velocity.z = wz
+        imu.orientation.w = qw
+        imu.orientation.x = qx
+        imu.orientation.y = qy
+        imu.orientation.z = qz
         imu.orientation_covariance[0] = imu.angular_velocity_covariance[0] = imu.linear_acceleration_covariance[0] = -1
-        self.pub.publish(imu)
+        self.pub_imu.publish(imu)
 
 # ----------------------------------------------------------
 def main(args=None):
