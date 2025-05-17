@@ -1,0 +1,23 @@
+bt_imu_node:
+  ros__parameters:
+    NOTIFY_UUID: "0000ffe4-0000-1000-8000-00805f9a34fb"
+    START_BYTE: 0x55
+    FLAG_IMU: 0x61
+    FRAME_LEN: 28
+    G_SCA: 156.8
+    GYRO_SCA: 2000
+    EULER_SCA: 180
+    SMX/BTIMU: "SMX/BTIMU"
+    WTSDCL: "WTSDCL"
+    bt_imu_link: "bt_imu_link"
+
+# 控制节点配置
+control_loop_node:
+  ros__parameters:
+    # 输入话题名
+    TARGET_ANGLE_TOPIC:  "SMX/TargetImageAngle"
+    ODOM_TOPIC:          "SMX/Odom"
+    GIMBAL_STATE_TOPIC:  "SMX/GimbalState"
+    # 输出话题名
+    SPORT_CMD_TOPIC:     "SMX/SportCmd"
+    JOY_CMD_TOPIC:       "SMX/JoyFloatCmd"
