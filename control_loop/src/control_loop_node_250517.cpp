@@ -4,6 +4,7 @@
 #include "nav_msgs/msg/odometry.hpp"
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h> 
 #include <array>
+#include <thread>
 #include <chrono>
 #include <cmath>
 #include <iostream> 
@@ -101,18 +102,6 @@ private:
       pitch_error = pitch_target - pitch_target_init - pitch_optic;
       yaw_error   = yaw_target - yaw_target_init - yaw_optic + yaw_target_correct * 2 * M_PI;
 
-      RCLCPP_INFO(get_logger(), "control_loop_node_250517 started.\n"
-        "  roll_e: %lf, pitch_e: %lf, yaw_e: %lf,\n"
-        "  roll_gimbal: %lf, pitch_gimbal: %lf, yaw_gimbal: %lf,\n"
-        "  roll_vehicle: %lf, pitch_vehicle: %lf, yaw_vehicle: %lf.\n"
-        "  roll_error: %lf, pitch_error: %lf, yaw_error: %lf,\n",
-        roll_target - roll_target_init,
-        pitch_target - pitch_target_init,
-        yaw_target - yaw_target_init + yaw_target_correct * 2 * M_PI,
-        roll_gimbal, pitch_gimbal, yaw_gimbal,
-        roll_vehicle, pitch_vehicle, yaw_vehicle,
-        roll_error, pitch_error, yaw_error);
-
       if(gimbal_motion_enable)
         control_loop_function();
     }
@@ -132,7 +121,7 @@ private:
       roll_target  = roll_optic + roll_error;
       pitch_target = pitch_optic + pitch_error;
       yaw_target   = yaw_optic + yaw_error;
-
+      
       if(gimbal_motion_enable)
         control_loop_function();
     }
@@ -169,15 +158,33 @@ private:
 
       yaw_target_correct = 0;
 
-      RCLCPP_INFO(get_logger(), "Default gimbal angle is reset.");
+      RCLCPP_INFO(get_logger(), "Default Gimbal Angle is Reset.");
     }
-    if (msg->data == "Gimbal Control Enable Change")
+
+    if (msg->data == "Gimbal Control Enable")
     {
-      if(gimbal_motion_enable)
-        gimbal_motion_enable = 0;
+      gimbal_motion_enable = 1;
+      RCLCPP_INFO(get_logger(), "Gimbal Control Enable.");
+    }
+
+    if (msg->data == "Gimbal Control Disable")
+    {
+      gimbal_motion_enable = 0;
+      RCLCPP_INFO(get_logger(), "Gimbal Control Disable.");
+    }
+
+    if (msg->data == "Gimbal Control Motion")
+    {
+      if(robot_motion_enable)
+      {
+        robot_motion_enable = 0;
+        RCLCPP_INFO(get_logger(), "Robot Motion Disable.");
+      }
       else
-        gimbal_motion_enable = 1;
-      RCLCPP_INFO(get_logger(), "Gimbal control enable is changed.");
+      {
+        robot_motion_enable = 1;
+        RCLCPP_INFO(get_logger(), "Robot Motion Enable.");
+      }
     }
   }
 
@@ -190,8 +197,8 @@ private:
 
   void gimbal_controller_function()
   {
-    double P_gimbal_pitch = -50;
-    double P_gimbal_yaw   = -50;
+    double P_gimbal_pitch = -75;
+    double P_gimbal_yaw   = -75;
 
     gimbal_action_pub_fun(30000001, P_gimbal_yaw*yaw_error, P_gimbal_pitch*pitch_error);
   }
@@ -203,29 +210,73 @@ private:
     std::chrono::duration<double> dt = now - last_time;
     last_time = now;
 
-    if(dt.count() > 0.5)
+    if(dt.count() > 0.2)
     {
       robot_posture_yaw = 0;
       robot_posture_pitch = 0;
     }
 
     // 运动P控制器
-    if (std::fabs(yaw_error + yaw_gimbal) > 1.0 && dt.count() < 0.5) {
-      robot_motion_enable = 1;
-      robot_motion_yaw = std::clamp((yaw_error + yaw_gimbal)*0.3, -1.0, 1.0);
-      vehicle_action_pub_fun(25202123, 0, 0, robot_motion_yaw, 0);
-    } else if (robot_motion_enable > 0) {
-      vehicle_action_pub_fun(16170000, 0, 0, 0, 0);
-      robot_motion_enable = 0;
+    if (robot_motion_enable && (std::fabs(pitch_target) < 0.8 || std::fabs(pitch_target) > 1.2) && dt.count() < 0.2) {
+      robot_motion_start = 1;
+      robot_motion_foreward = std::clamp((1.2 - pitch_target)*1.0, -0.25, 0.25);
+      robot_motion_leftward = 0;
+      robot_motion_yaw = std::clamp((yaw_error + yaw_gimbal)*1.0, -1.0, 1.0);
+      vehicle_action_pub_fun(25202123, robot_motion_leftward, robot_motion_foreward, robot_motion_yaw, 0.0);
+
+      RCLCPP_INFO(get_logger(), "运动P控制器1.\n"
+        "  roll_target: %lf, pitch_target: %lf, yaw_target: %lf,\n"
+        "  roll_optic: %lf, pitch_optic: %lf, yaw_optic: %lf,\n"
+        "  roll_vehicle: %lf, pitch_vehicle: %lf, yaw_vehicle: %lf.\n"
+        "  roll_error: %lf, pitch_error: %lf, yaw_error: %lf,\n",
+        roll_target, pitch_target, yaw_target,
+        roll_optic, pitch_optic, yaw_optic,
+        roll_vehicle, pitch_vehicle, yaw_vehicle,
+        roll_error, pitch_error, yaw_error);
+      
+      return;
+    }
+    else if (robot_motion_start)
+    {
+      robot_motion_start = 0;
+      vehicle_action_pub_fun(16170000, 0.0, 0.0, 0.0, 0.0);
+      std::this_thread::sleep_for(std::chrono::milliseconds(30));
+      return;
+    }
+    
+    if (std::fabs(yaw_error + yaw_gimbal) > 1.0 && dt.count() < 0.2) {
+      robot_turning_start = 1;
+      robot_motion_yaw = std::clamp((yaw_error + yaw_gimbal)*1.0, -1.0, 1.0);
+      vehicle_action_pub_fun(25202123, 0.0, 0.0, robot_motion_yaw, 0.0);
+
+      RCLCPP_INFO(get_logger(), "运动P控制器2.\n"
+        "  roll_target: %lf, pitch_target: %lf, yaw_target: %lf,\n"
+        "  roll_optic: %lf, pitch_optic: %lf, yaw_optic: %lf,\n"
+        "  roll_vehicle: %lf, pitch_vehicle: %lf, yaw_vehicle: %lf.\n"
+        "  roll_error: %lf, pitch_error: %lf, yaw_error: %lf,\n",
+        roll_target, pitch_target, yaw_target,
+        roll_optic, pitch_optic, yaw_optic,
+        roll_vehicle, pitch_vehicle, yaw_vehicle,
+        roll_error, pitch_error, yaw_error);
+    }
+    else if (robot_turning_start) {
+      robot_turning_start = 0;
+      vehicle_action_pub_fun(16170000, 0.0, 0.0, 0.0, 0.0);
+      std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
 
     // 姿态I控制器
-    if (std::fabs(yaw_error + yaw_gimbal) > 0.3 || std::fabs(pitch_error + pitch_gimbal) > 0.3)
-      robot_posture_enable = 1;
-    if (robot_posture_enable) {
-      robot_posture_yaw   =std::clamp(robot_posture_yaw+ (yaw_error + yaw_gimbal)*0.05, -0.5,0.5);
-      robot_posture_pitch =std::clamp(robot_posture_pitch+(pitch_error + pitch_gimbal)*0.05,-0.5,0.5);
-      vehicle_action_pub_fun(22232400, robot_posture_yaw, robot_posture_pitch,0,0);
+    if ((std::fabs(yaw_error + yaw_gimbal) > 0.3 || std::fabs(pitch_error + pitch_gimbal) > 0.3)) {
+      robot_posture_start = 1;
+      robot_posture_yaw   =std::clamp(robot_posture_yaw + (yaw_error + yaw_gimbal)*0.02, -0.5,0.5);
+      robot_posture_pitch =std::clamp(robot_posture_pitch + (pitch_error + pitch_gimbal)*0.02,-0.5,0.5);
+      vehicle_action_pub_fun(22232400, robot_posture_yaw, robot_posture_pitch,0.0,0.0);
+    }
+    else if(robot_posture_start)
+    {
+      robot_posture_start = 0;
+      vehicle_action_pub_fun(16170000, 0.0, 0.0, 0.0, 0.0);
+      std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
   }
 
@@ -258,15 +309,16 @@ private:
   std::string target_angle_topic_, angle_error_topic_, vehicle_angle_topic_, gimbal_angle_topic_, vehicle_cmd_topic_, gimbal_cmd_topic_, angle_reset_topic_;
 
   // State variables
+  int gimbal_motion_enable = 0, robot_motion_enable = 0, robot_posture_start=0, robot_turning_start=0,  robot_motion_start = 0;
+
   double roll_target=0, pitch_target=0, yaw_target=0;
   double roll_target_init=0, pitch_target_init=0, yaw_target_init=0, yaw_target_correct=0;
   double roll_optic=0, pitch_optic=0, yaw_optic=0;
   double roll_error=0, pitch_error=0, yaw_error=0;
   double roll_gimbal=0, pitch_gimbal=0, yaw_gimbal=0;
   double roll_vehicle=0, pitch_vehicle=0, yaw_vehicle=0;
-  int gimbal_motion_enable = 0, robot_motion_enable=0, robot_posture_enable=0;
   double robot_posture_roll=0, robot_posture_pitch=0, robot_posture_yaw=0;
-  double robot_motion_roll=0, robot_motion_pitch=0, robot_motion_yaw=0;
+  double robot_motion_roll=0, robot_motion_pitch=0, robot_motion_yaw=0, robot_motion_foreward=0, robot_motion_leftward=0;
 };
 
 int main(int argc, char ** argv)

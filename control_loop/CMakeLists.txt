@@ -21,7 +21,7 @@ ament_target_dependencies(control_loop_node_250517
 # 安装
 install(
   TARGETS 
-    control_loop_node_250517 
+    control_loop_node_250517
   DESTINATION lib/${PROJECT_NAME}
 )
 
