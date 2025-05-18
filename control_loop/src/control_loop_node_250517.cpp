@@ -206,18 +206,14 @@ private:
   void vehicle_controller_function()
   {
     static auto last_time = std::chrono::steady_clock::now();
+    double Max_Intervel = 0.2;
     auto now = std::chrono::steady_clock::now();
     std::chrono::duration<double> dt = now - last_time;
     last_time = now;
 
-    if(dt.count() > 0.2)
-    {
-      robot_posture_yaw = 0;
-      robot_posture_pitch = 0;
-    }
 
     // 运动P控制器
-    if (robot_motion_enable && (std::fabs(pitch_target) < 0.8 || std::fabs(pitch_target) > 1.2) && dt.count() < 0.2) {
+    if (robot_motion_enable && (std::fabs(pitch_target) < 0.8 || std::fabs(pitch_target) > 1.2) && dt.count() < Max_Intervel) {
       robot_motion_start = 1;
       robot_motion_foreward = std::clamp((1.2 - pitch_target)*1.0, -0.25, 0.25);
       robot_motion_leftward = 0;
@@ -244,7 +240,7 @@ private:
       return;
     }
     
-    if (std::fabs(yaw_error + yaw_gimbal) > 1.0 && dt.count() < 0.2) {
+    if (std::fabs(yaw_error + yaw_gimbal) > 1.0 && dt.count() < Max_Intervel) {
       robot_turning_start = 1;
       robot_motion_yaw = std::clamp((yaw_error + yaw_gimbal)*1.0, -1.0, 1.0);
       vehicle_action_pub_fun(25202123, 0.0, 0.0, robot_motion_yaw, 0.0);
@@ -261,21 +257,35 @@ private:
     }
     else if (robot_turning_start) {
       robot_turning_start = 0;
+
+      robot_posture_yaw = 0;
+      robot_posture_pitch = 0;
       vehicle_action_pub_fun(16170000, 0.0, 0.0, 0.0, 0.0);
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
 
     // 姿态I控制器
-    if ((std::fabs(yaw_error + yaw_gimbal) > 0.3 || std::fabs(pitch_error + pitch_gimbal) > 0.3)) {
+    if ((std::fabs(yaw_error + yaw_gimbal) > 0.3 || std::fabs(pitch_error + pitch_gimbal) > 0.3) && dt.count() < Max_Intervel) {
       robot_posture_start = 1;
       robot_posture_yaw   =std::clamp(robot_posture_yaw + (yaw_error + yaw_gimbal)*0.02, -0.5,0.5);
       robot_posture_pitch =std::clamp(robot_posture_pitch + (pitch_error + pitch_gimbal)*0.02,-0.5,0.5);
       vehicle_action_pub_fun(22232400, robot_posture_yaw, robot_posture_pitch,0.0,0.0);
+      RCLCPP_INFO(get_logger(), "运动P控制器3.\n"
+        "  roll_target: %lf, pitch_target: %lf, yaw_target: %lf,\n"
+        "  roll_optic: %lf, pitch_optic: %lf, yaw_optic: %lf,\n"
+        "  roll_vehicle: %lf, pitch_vehicle: %lf, yaw_vehicle: %lf.\n"
+        "  roll_error: %lf, pitch_error: %lf, yaw_error: %lf,\n",
+        roll_target, pitch_target, yaw_target,
+        roll_optic, pitch_optic, yaw_optic,
+        roll_vehicle, pitch_vehicle, yaw_vehicle,
+        roll_error, pitch_error, yaw_error);
     }
     else if(robot_posture_start)
     {
       robot_posture_start = 0;
-      vehicle_action_pub_fun(16170000, 0.0, 0.0, 0.0, 0.0);
+      robot_posture_yaw = 0;
+      robot_posture_pitch = 0;
+      vehicle_action_pub_fun(22232400, 0.0, 0.0, 0.0, 0.0);
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
   }
