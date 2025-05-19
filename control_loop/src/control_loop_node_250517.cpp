@@ -76,7 +76,7 @@ private:
   {
     if (msg->data.size() >= 3) {
 
-      static double last_yaw_target = 0;
+      static double last_roll_target = 0, last_pitch_target = 0, last_yaw_target = 0;
 
       auto now = this->now();
       if ((now - last_target_angle_time_).seconds() < (1.0 / 15.0)) {
@@ -88,28 +88,41 @@ private:
       pitch_optic = pitch_gimbal + pitch_vehicle;
       yaw_optic   = yaw_gimbal + yaw_vehicle;
 
-      roll_target  = -msg->data[0] * M_PI / 180.0;
+      roll_target  = msg->data[0] * M_PI / 180.0;
       pitch_target = -msg->data[1] * M_PI / 180.0;
       yaw_target   = msg->data[2] * M_PI / 180.0;
-      
-      if(last_yaw_target<-1&&yaw_target>1)
-        yaw_target_correct -= 1;
-      if(last_yaw_target>1&&yaw_target<-1)
-        yaw_target_correct += 1;
-      last_yaw_target = yaw_target;
 
-      roll_error  = roll_target - roll_target_init - roll_optic;
-      pitch_error = pitch_target - pitch_target_init - pitch_optic;
-      yaw_error   = yaw_target - yaw_target_init - yaw_optic + yaw_target_correct * 2 * M_PI;
-
-      if(gimbal_motion_enable)
+      if(IMU_follow_enable)
+      {
+        if(roll_target-last_roll_target>0.8*M_PI)
+          roll_target_correct -= 1;
+        if(roll_target-last_roll_target<-0.8*M_PI)
+          roll_target_correct += 1;
+        if(pitch_target-last_pitch_target>0.8*M_PI)
+          pitch_target_correct -= 1;
+        if(pitch_target-last_pitch_target<-0.8*M_PI)
+          pitch_target_correct += 1;
+        if(yaw_target-last_yaw_target>0.8*M_PI)
+          yaw_target_correct -= 1;
+        if(yaw_target-last_yaw_target<-0.8*M_PI)
+          yaw_target_correct += 1;
+  
+        last_roll_target = roll_target;
+        last_pitch_target = pitch_target;
+        last_yaw_target = yaw_target;
+  
+        roll_error  = roll_target - roll_target_init - roll_optic + roll_target_correct * 2 * M_PI;
+        pitch_error = pitch_target - pitch_target_init - pitch_optic + pitch_target_correct * 2 * M_PI;
+        yaw_error   = yaw_target - yaw_target_init - yaw_optic + yaw_target_correct * 2 * M_PI;
+  
         control_loop_function();
+      }
     }
   }
 
   void angle_error_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
   {
-    if (msg->data.size() >= 2) {
+    if (auto_track_enable ==1 && msg->data.size() >= 2) {
       roll_error  = 0;
       pitch_error = msg->data[1] * M_PI / 180.0;
       yaw_error   = -msg->data[0] * M_PI / 180.0;
@@ -122,13 +135,15 @@ private:
       pitch_target = pitch_optic + pitch_error;
       yaw_target   = yaw_optic + yaw_error;
       
-      if(gimbal_motion_enable)
-        control_loop_function();
+      control_loop_function();
     }
   }
 
   void vehicle_angle_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
   {
+
+    static double last_roll_vehicle = 0, last_pitch_vehicle = 0, last_yaw_vehicle = 0;
+
     tf2::Quaternion quat(
       msg->pose.pose.orientation.x,
       msg->pose.pose.orientation.y,
@@ -136,6 +151,24 @@ private:
       msg->pose.pose.orientation.w);
     tf2::Matrix3x3 m(quat);
     m.getRPY(roll_vehicle, pitch_vehicle, yaw_vehicle);
+
+    if(roll_vehicle-last_roll_vehicle>0.8*M_PI)
+      roll_vehicle_correct -= 1;
+    if(roll_vehicle-last_roll_vehicle<-0.8*M_PI)
+      roll_vehicle_correct += 1;
+    if(pitch_vehicle-last_pitch_vehicle>0.8*M_PI)
+      pitch_vehicle_correct -= 1;
+    if(pitch_vehicle-last_pitch_vehicle<-0.8*M_PI)
+      pitch_vehicle_correct += 1;
+    if(yaw_vehicle-last_yaw_vehicle>0.8*M_PI)
+      yaw_vehicle_correct -= 1;
+    if(yaw_vehicle-last_yaw_vehicle<-0.8*M_PI)
+      yaw_vehicle_correct += 1;
+
+    last_roll_vehicle = roll_vehicle;
+    last_pitch_vehicle = pitch_vehicle;
+    last_yaw_vehicle = yaw_vehicle;
+    
     pitch_vehicle = -pitch_vehicle;
   }
 
@@ -150,41 +183,51 @@ private:
 
   void angle_reset_callback(const std_msgs::msg::String::SharedPtr msg)
   {
-    if (msg->data == "Gimbal Angle Reset")
+    if (msg->data == "All Stop and Reset")
     {
+      IMU_follow_enable = 0;
+      auto_track_enable = 0;
+      robot_motion_enable = 0;
+
       roll_target_init  = roll_target - roll_optic;
       pitch_target_init = pitch_target - pitch_optic;
       yaw_target_init   = yaw_target - yaw_optic;
 
+      roll_target_correct = 0;
+      pitch_target_correct = 0;
       yaw_target_correct = 0;
 
-      RCLCPP_INFO(get_logger(), "Default Gimbal Angle is Reset.");
+      RCLCPP_INFO(get_logger(), "All Stop and Reset.");
     }
 
-    if (msg->data == "Gimbal Control Enable")
+    if (msg->data == "IMU Follow Mode Enable")
     {
-      gimbal_motion_enable = 1;
-      RCLCPP_INFO(get_logger(), "Gimbal Control Enable.");
+      IMU_follow_enable = 1;
+      auto_track_enable = 0;
+      robot_motion_enable = 0;
+
+      roll_target_init  = roll_target - roll_optic;
+      pitch_target_init = pitch_target - pitch_optic;
+      yaw_target_init   = yaw_target - yaw_optic;
+
+      roll_target_correct = 0;
+      pitch_target_correct = 0;
+      yaw_target_correct = 0;
+      
+      RCLCPP_INFO(get_logger(), "IMU Follow Mode Enable.");
     }
 
-    if (msg->data == "Gimbal Control Disable")
+    if (msg->data == "Auto Track Mode Enable")
     {
-      gimbal_motion_enable = 0;
-      RCLCPP_INFO(get_logger(), "Gimbal Control Disable.");
+      auto_track_enable = 1;
+      RCLCPP_INFO(get_logger(), "Auto Track Mode Enable.");
     }
 
-    if (msg->data == "Gimbal Control Motion")
+    if (msg->data == "Auto Motion Mode Enable")
     {
-      if(robot_motion_enable)
-      {
-        robot_motion_enable = 0;
-        RCLCPP_INFO(get_logger(), "Robot Motion Disable.");
-      }
-      else
-      {
-        robot_motion_enable = 1;
-        RCLCPP_INFO(get_logger(), "Robot Motion Enable.");
-      }
+      auto_track_enable = 1;
+      robot_motion_enable = 1;
+      RCLCPP_INFO(get_logger(), "Auto Motion Mode Enable.");
     }
   }
 
@@ -206,7 +249,7 @@ private:
   void vehicle_controller_function()
   {
     static auto last_time = std::chrono::steady_clock::now();
-    double Max_Intervel = 0.2;
+    double Max_Intervel = 0.3;
     auto now = std::chrono::steady_clock::now();
     std::chrono::duration<double> dt = now - last_time;
     last_time = now;
@@ -220,15 +263,15 @@ private:
       robot_motion_yaw = std::clamp((yaw_error + yaw_gimbal)*1.0, -1.0, 1.0);
       vehicle_action_pub_fun(25202123, robot_motion_leftward, robot_motion_foreward, robot_motion_yaw, 0.0);
 
-      RCLCPP_INFO(get_logger(), "运动P控制器1.\n"
-        "  roll_target: %lf, pitch_target: %lf, yaw_target: %lf,\n"
-        "  roll_optic: %lf, pitch_optic: %lf, yaw_optic: %lf,\n"
-        "  roll_vehicle: %lf, pitch_vehicle: %lf, yaw_vehicle: %lf.\n"
-        "  roll_error: %lf, pitch_error: %lf, yaw_error: %lf,\n",
-        roll_target, pitch_target, yaw_target,
-        roll_optic, pitch_optic, yaw_optic,
-        roll_vehicle, pitch_vehicle, yaw_vehicle,
-        roll_error, pitch_error, yaw_error);
+      // RCLCPP_INFO(get_logger(), "运动P控制器1.\n"
+      //   "  roll_target: %lf, pitch_target: %lf, yaw_target: %lf,\n"
+      //   "  roll_optic: %lf, pitch_optic: %lf, yaw_optic: %lf,\n"
+      //   "  roll_vehicle: %lf, pitch_vehicle: %lf, yaw_vehicle: %lf.\n"
+      //   "  roll_error: %lf, pitch_error: %lf, yaw_error: %lf,\n",
+      //   roll_target, pitch_target, yaw_target,
+      //   roll_optic, pitch_optic, yaw_optic,
+      //   roll_vehicle, pitch_vehicle, yaw_vehicle,
+      //   roll_error, pitch_error, yaw_error);
       
       return;
     }
@@ -245,15 +288,15 @@ private:
       robot_motion_yaw = std::clamp((yaw_error + yaw_gimbal)*1.0, -1.0, 1.0);
       vehicle_action_pub_fun(25202123, 0.0, 0.0, robot_motion_yaw, 0.0);
 
-      RCLCPP_INFO(get_logger(), "运动P控制器2.\n"
-        "  roll_target: %lf, pitch_target: %lf, yaw_target: %lf,\n"
-        "  roll_optic: %lf, pitch_optic: %lf, yaw_optic: %lf,\n"
-        "  roll_vehicle: %lf, pitch_vehicle: %lf, yaw_vehicle: %lf.\n"
-        "  roll_error: %lf, pitch_error: %lf, yaw_error: %lf,\n",
-        roll_target, pitch_target, yaw_target,
-        roll_optic, pitch_optic, yaw_optic,
-        roll_vehicle, pitch_vehicle, yaw_vehicle,
-        roll_error, pitch_error, yaw_error);
+      // RCLCPP_INFO(get_logger(), "运动P控制器2.\n"
+      //   "  roll_target: %lf, pitch_target: %lf, yaw_target: %lf,\n"
+      //   "  roll_optic: %lf, pitch_optic: %lf, yaw_optic: %lf,\n"
+      //   "  roll_vehicle: %lf, pitch_vehicle: %lf, yaw_vehicle: %lf.\n"
+      //   "  roll_error: %lf, pitch_error: %lf, yaw_error: %lf,\n",
+      //   roll_target, pitch_target, yaw_target,
+      //   roll_optic, pitch_optic, yaw_optic,
+      //   roll_vehicle, pitch_vehicle, yaw_vehicle,
+      //   roll_error, pitch_error, yaw_error);
     }
     else if (robot_turning_start) {
       robot_turning_start = 0;
@@ -270,15 +313,15 @@ private:
       robot_posture_yaw   =std::clamp(robot_posture_yaw + (yaw_error + yaw_gimbal)*0.02, -0.5,0.5);
       robot_posture_pitch =std::clamp(robot_posture_pitch + (pitch_error + pitch_gimbal)*0.02,-0.5,0.5);
       vehicle_action_pub_fun(22232400, robot_posture_yaw, robot_posture_pitch,0.0,0.0);
-      RCLCPP_INFO(get_logger(), "运动P控制器3.\n"
-        "  roll_target: %lf, pitch_target: %lf, yaw_target: %lf,\n"
-        "  roll_optic: %lf, pitch_optic: %lf, yaw_optic: %lf,\n"
-        "  roll_vehicle: %lf, pitch_vehicle: %lf, yaw_vehicle: %lf.\n"
-        "  roll_error: %lf, pitch_error: %lf, yaw_error: %lf,\n",
-        roll_target, pitch_target, yaw_target,
-        roll_optic, pitch_optic, yaw_optic,
-        roll_vehicle, pitch_vehicle, yaw_vehicle,
-        roll_error, pitch_error, yaw_error);
+      // RCLCPP_INFO(get_logger(), "运动P控制器3.\n"
+      //   "  roll_target: %lf, pitch_target: %lf, yaw_target: %lf,\n"
+      //   "  roll_optic: %lf, pitch_optic: %lf, yaw_optic: %lf,\n"
+      //   "  roll_vehicle: %lf, pitch_vehicle: %lf, yaw_vehicle: %lf.\n"
+      //   "  roll_error: %lf, pitch_error: %lf, yaw_error: %lf,\n",
+      //   roll_target, pitch_target, yaw_target,
+      //   roll_optic, pitch_optic, yaw_optic,
+      //   roll_vehicle, pitch_vehicle, yaw_vehicle,
+      //   roll_error, pitch_error, yaw_error);
     }
     else if(robot_posture_start)
     {
@@ -319,14 +362,17 @@ private:
   std::string target_angle_topic_, angle_error_topic_, vehicle_angle_topic_, gimbal_angle_topic_, vehicle_cmd_topic_, gimbal_cmd_topic_, angle_reset_topic_;
 
   // State variables
-  int gimbal_motion_enable = 0, robot_motion_enable = 0, robot_posture_start=0, robot_turning_start=0,  robot_motion_start = 0;
+  int IMU_follow_enable = 0, auto_track_enable = 0, robot_motion_enable = 0;
+  int robot_posture_start=0, robot_turning_start=0,  robot_motion_start = 0;
 
   double roll_target=0, pitch_target=0, yaw_target=0;
-  double roll_target_init=0, pitch_target_init=0, yaw_target_init=0, yaw_target_correct=0;
+  double roll_target_init=0, pitch_target_init=0, yaw_target_init=0;
+  double roll_target_correct=0, pitch_target_correct=0, yaw_target_correct=0;
   double roll_optic=0, pitch_optic=0, yaw_optic=0;
   double roll_error=0, pitch_error=0, yaw_error=0;
   double roll_gimbal=0, pitch_gimbal=0, yaw_gimbal=0;
   double roll_vehicle=0, pitch_vehicle=0, yaw_vehicle=0;
+  double roll_vehicle_correct=0, pitch_vehicle_correct=0, yaw_vehicle_correct=0;
   double robot_posture_roll=0, robot_posture_pitch=0, robot_posture_yaw=0;
   double robot_motion_roll=0, robot_motion_pitch=0, robot_motion_yaw=0, robot_motion_foreward=0, robot_motion_leftward=0;
 };
