@@ -78,12 +78,6 @@ private:
 
       static double last_roll_target = 0, last_pitch_target = 0, last_yaw_target = 0;
 
-      auto now = this->now();
-      if ((now - last_target_angle_time_).seconds() < (1.0 / 15.0)) {
-        return;
-      }
-      last_target_angle_time_ = now;
-
       roll_optic  = roll_gimbal + roll_vehicle;
       pitch_optic = pitch_gimbal + pitch_vehicle;
       yaw_optic   = yaw_gimbal + yaw_vehicle;
@@ -94,6 +88,12 @@ private:
 
       if(IMU_follow_enable)
       {
+        auto now = this->now();
+        if ((now - last_target_angle_time_).seconds() < (1.0 / 15.0)) {
+          return;
+        }
+        last_target_angle_time_ = now;
+
         if(roll_target-last_roll_target>0.8*M_PI)
           roll_target_correct -= 1;
         if(roll_target-last_roll_target<-0.8*M_PI)
@@ -219,12 +219,15 @@ private:
 
     if (msg->data == "Auto Track Mode Enable")
     {
+      IMU_follow_enable = 0;
       auto_track_enable = 1;
+      robot_motion_enable = 0;
       RCLCPP_INFO(get_logger(), "Auto Track Mode Enable.");
     }
 
     if (msg->data == "Auto Motion Mode Enable")
     {
+      IMU_follow_enable = 0;
       auto_track_enable = 1;
       robot_motion_enable = 1;
       RCLCPP_INFO(get_logger(), "Auto Motion Mode Enable.");
