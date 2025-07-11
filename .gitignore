@@ -1,7 +1,1 @@
-build/
-install/
-log/
-.vscode/
-*.bag
-*.pyc
-__pycache__/
+local_file/
