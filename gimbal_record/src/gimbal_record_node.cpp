@@ -52,7 +52,7 @@ public:
     fs::create_directories(out_dir_);
 
     /* ---------- 4. 打开 CSV ---------- */
-    csv_path_ = out_dir_ / ("AllData_" + suffix_ + ".csv");
+    csv_path_ = out_dir_ / ("Msg" + suffix_ + ".csv");
     csv_.open(csv_path_);
     csv_ << "time_s,"
             "angle_x,angle_y,tilt,"
@@ -70,7 +70,7 @@ public:
     if (csv_.is_open()) csv_.close();
 
     RCLCPP_INFO(get_logger(), "Total frames recorded: %zu", frame_count_);
-    fs::path vp = out_dir_ / ("GimbalCamera_Raw_" + suffix_ + ".mp4");
+    fs::path vp = out_dir_ / ("Camera" + suffix_ + ".mp4");
     if (fs::exists(vp))
       RCLCPP_INFO(get_logger(), "MP4 size: %zu bytes", fs::file_size(vp));
   }
@@ -93,7 +93,7 @@ private:
 
     /* ---- 延迟创建 H.264 VideoWriter ---- */
     if (!video_writer_.isOpened()) {
-      video_path_ = out_dir_ / ("GimbalCamera_Raw_" + suffix_ + ".mp4");
+      video_path_ = out_dir_ / ("Camera" + suffix_ + ".mp4");
       video_writer_.open(
         video_path_.string(),
         cv::VideoWriter::fourcc('a','v','c','1'),  // H.264/AVC fourcc
