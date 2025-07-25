@@ -27,7 +27,7 @@ public:
   {
     /* ---------- 1. 话题订阅 ---------- */
     sub_img_ = create_subscription<Image>(
-      "/SMX/GimbalCamera_Raw", 10,
+      "/SMX/Camera_Raw", 10,
       std::bind(&GimbalRecorder::on_image, this, _1));
     sub_bt_ = create_subscription<Float64MultiArray>(
       "/SMX/BTAngle", 10, std::bind(&GimbalRecorder::on_bt, this, _1));
@@ -42,7 +42,7 @@ public:
     std::tm tm{};
     localtime_r(&tt, &tm);
     std::ostringstream oss;
-    oss << std::put_time(&tm, "%Y%m%d_%H%M%S");
+    oss << std::put_time(&tm, "_%Y%m%d_%H%M%S");
     suffix_ = oss.str();
 
     /* ---------- 3. 输出目录 ---------- */
