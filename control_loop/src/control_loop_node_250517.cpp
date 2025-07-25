@@ -94,26 +94,29 @@ private:
         }
         last_target_angle_time_ = now;
 
-        if(roll_target-last_roll_target>0.8*M_PI)
-          roll_target_correct -= 1;
-        if(roll_target-last_roll_target<-0.8*M_PI)
-          roll_target_correct += 1;
-        if(pitch_target-last_pitch_target>0.8*M_PI)
-          pitch_target_correct -= 1;
-        if(pitch_target-last_pitch_target<-0.8*M_PI)
-          pitch_target_correct += 1;
-        if(yaw_target-last_yaw_target>0.8*M_PI)
+        if(yaw_target-last_yaw_target>1.5*M_PI)
           yaw_target_correct -= 1;
-        if(yaw_target-last_yaw_target<-0.8*M_PI)
+        if(yaw_target-last_yaw_target<-1.5*M_PI)
           yaw_target_correct += 1;
   
         last_roll_target = roll_target;
         last_pitch_target = pitch_target;
         last_yaw_target = yaw_target;
   
-        roll_error  = roll_target - roll_target_init - roll_optic + roll_target_correct * 2 * M_PI;
-        pitch_error = pitch_target - pitch_target_init - pitch_optic + pitch_target_correct * 2 * M_PI;
+        roll_error  = roll_target - roll_target_init - roll_optic;
+        pitch_error = pitch_target - pitch_target_init - pitch_optic;
         yaw_error   = yaw_target - yaw_target_init - yaw_optic + yaw_target_correct * 2 * M_PI;
+
+
+        RCLCPP_INFO(get_logger(), "IMU.\n"
+          "  roll_target: %lf, pitch_target: %lf, yaw_target: %lf,\n"
+          "  roll_optic: %lf, pitch_optic: %lf, yaw_optic: %lf,\n"
+          "  roll_vehicle: %lf, pitch_vehicle: %lf, yaw_vehicle: %lf.\n"
+          "  roll_error: %lf, pitch_error: %lf, yaw_error: %lf,\n",
+          roll_target, pitch_target, yaw_target,
+          roll_optic, pitch_optic, yaw_optic,
+          roll_vehicle, pitch_vehicle, yaw_vehicle,
+          roll_error, pitch_error, yaw_error);
   
         control_loop_function();
       }
@@ -310,30 +313,30 @@ private:
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
 
-    // 姿态I控制器
-    if ((std::fabs(yaw_error + yaw_gimbal) > 0.3 || std::fabs(pitch_error + pitch_gimbal) > 0.3) && dt.count() < Max_Intervel) {
-      robot_posture_start = 1;
-      robot_posture_yaw   =std::clamp(robot_posture_yaw + (yaw_error + yaw_gimbal)*0.02, -0.5,0.5);
-      robot_posture_pitch =std::clamp(robot_posture_pitch + (pitch_error + pitch_gimbal)*0.02,-0.5,0.5);
-      vehicle_action_pub_fun(22232400, robot_posture_yaw, robot_posture_pitch,0.0,0.0);
-      // RCLCPP_INFO(get_logger(), "运动P控制器3.\n"
-      //   "  roll_target: %lf, pitch_target: %lf, yaw_target: %lf,\n"
-      //   "  roll_optic: %lf, pitch_optic: %lf, yaw_optic: %lf,\n"
-      //   "  roll_vehicle: %lf, pitch_vehicle: %lf, yaw_vehicle: %lf.\n"
-      //   "  roll_error: %lf, pitch_error: %lf, yaw_error: %lf,\n",
-      //   roll_target, pitch_target, yaw_target,
-      //   roll_optic, pitch_optic, yaw_optic,
-      //   roll_vehicle, pitch_vehicle, yaw_vehicle,
-      //   roll_error, pitch_error, yaw_error);
-    }
-    else if(robot_posture_start)
-    {
-      robot_posture_start = 0;
-      robot_posture_yaw = 0;
-      robot_posture_pitch = 0;
-      vehicle_action_pub_fun(22232400, 0.0, 0.0, 0.0, 0.0);
-      std::this_thread::sleep_for(std::chrono::milliseconds(30));
-    }
+    // // 姿态I控制器
+    // if ((std::fabs(yaw_error + yaw_gimbal) > 0.3 || std::fabs(pitch_error + pitch_gimbal) > 0.3) && dt.count() < Max_Intervel) {
+    //   robot_posture_start = 1;
+    //   robot_posture_yaw   =std::clamp(robot_posture_yaw + (yaw_error + yaw_gimbal)*0.02, -0.5,0.5);
+    //   robot_posture_pitch =std::clamp(robot_posture_pitch + (pitch_error + pitch_gimbal)*0.02,-0.5,0.5);
+    //   vehicle_action_pub_fun(22232400, robot_posture_yaw, robot_posture_pitch,0.0,0.0);
+    //   // RCLCPP_INFO(get_logger(), "运动P控制器3.\n"
+    //   //   "  roll_target: %lf, pitch_target: %lf, yaw_target: %lf,\n"
+    //   //   "  roll_optic: %lf, pitch_optic: %lf, yaw_optic: %lf,\n"
+    //   //   "  roll_vehicle: %lf, pitch_vehicle: %lf, yaw_vehicle: %lf.\n"
+    //   //   "  roll_error: %lf, pitch_error: %lf, yaw_error: %lf,\n",
+    //   //   roll_target, pitch_target, yaw_target,
+    //   //   roll_optic, pitch_optic, yaw_optic,
+    //   //   roll_vehicle, pitch_vehicle, yaw_vehicle,
+    //   //   roll_error, pitch_error, yaw_error);
+    // }
+    // else if(robot_posture_start)
+    // {
+    //   robot_posture_start = 0;
+    //   robot_posture_yaw = 0;
+    //   robot_posture_pitch = 0;
+    //   vehicle_action_pub_fun(22232400, 0.0, 0.0, 0.0, 0.0);
+    //   std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    // }
   }
 
   void vehicle_action_pub_fun(double code, double p1, double p2, double p3, double p4)

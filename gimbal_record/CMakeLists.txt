@@ -30,6 +30,7 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
+target_compile_features(gimbal_record_node PUBLIC cxx_std_17)
 
 install(TARGETS gimbal_record_node
   DESTINATION lib/${PROJECT_NAME})
