@@ -1,6 +1,5 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
-#include "std_msgs/msg/string.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h> 
 #include <array>
@@ -25,17 +24,16 @@ public:
     gimbal_angle_topic_ = this->declare_parameter<std::string>(
       "GIMBAL_ANGLE_TOPIC", "NoYamlRead/GimbalState");
     angle_reset_topic_ = this->declare_parameter<std::string>(
-      "ANGLE_RESET_TOPIC", "NoYamlRead/JoyStringCmd");
+      "ANGLE_RESET_TOPIC", "NoYamlRead/SportCmd");
     vehicle_cmd_topic_ = this->declare_parameter<std::string>(
       "VEHICLE_CMD_TOPIC", "NoYamlRead/SportCmd");
     gimbal_cmd_topic_ = this->declare_parameter<std::string>(
-      "GIMBAL_CMD_TOPIC", "NoYamlRead/JoyFloatCmd");
+      "GIMBAL_CMD_TOPIC", "NoYamlRead/SportCmd");
 
     // ===== 订阅 =====
     target_angle_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
       target_angle_topic_, 10,
       std::bind(&ControlLoopNode::target_angle_callback, this, std::placeholders::_1));
-    last_target_angle_time_ = this->now() - rclcpp::Duration::from_seconds(1.0);
 
     angle_error_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
       angle_error_topic_, 10,
@@ -49,7 +47,7 @@ public:
       gimbal_angle_topic_, 10,
       std::bind(&ControlLoopNode::gimbal_angle_callback, this, std::placeholders::_1));
       
-    angle_reset_sub_ = create_subscription<std_msgs::msg::String>(
+    angle_reset_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
       angle_reset_topic_, 10,
       std::bind(&ControlLoopNode::angle_reset_callback, this, std::placeholders::_1));
 
@@ -88,25 +86,11 @@ private:
 
       if(IMU_follow_enable)
       {
-        auto now = this->now();
-        if ((now - last_target_angle_time_).seconds() < (1.0 / 15.0)) {
-          return;
-        }
-        last_target_angle_time_ = now;
-
-        if(yaw_target-last_yaw_target>1.5*M_PI)
-          yaw_target_correct -= 1;
-        if(yaw_target-last_yaw_target<-1.5*M_PI)
-          yaw_target_correct += 1;
-  
-        last_roll_target = roll_target;
-        last_pitch_target = pitch_target;
-        last_yaw_target = yaw_target;
-  
         roll_error  = roll_target - roll_target_init - roll_optic;
         pitch_error = pitch_target - pitch_target_init - pitch_optic;
-        yaw_error   = yaw_target - yaw_target_init - yaw_optic + yaw_target_correct * 2 * M_PI;
+        yaw_error   = yaw_target - yaw_target_init - yaw_optic;
 
+        yaw_error = std::remainder(yaw_error, 2.0 * M_PI);
 
         RCLCPP_INFO(get_logger(), "IMU.\n"
           "  roll_target: %lf, pitch_target: %lf, yaw_target: %lf,\n"
@@ -184,9 +168,9 @@ private:
     }
   }
 
-  void angle_reset_callback(const std_msgs::msg::String::SharedPtr msg)
+  void angle_reset_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
   {
-    if (msg->data == "All Stop and Reset")
+    if (msg->data[0] == 22130000)
     {
       IMU_follow_enable = 0;
       auto_track_enable = 0;
@@ -203,7 +187,7 @@ private:
       RCLCPP_INFO(get_logger(), "All Stop and Reset.");
     }
 
-    if (msg->data == "IMU Follow Mode Enable")
+    if (msg->data[0] == 22100000)
     {
       IMU_follow_enable = 1;
       auto_track_enable = 0;
@@ -220,7 +204,7 @@ private:
       RCLCPP_INFO(get_logger(), "IMU Follow Mode Enable.");
     }
 
-    if (msg->data == "Auto Track Mode Enable")
+    if (msg->data[0] == 22110000)
     {
       IMU_follow_enable = 0;
       auto_track_enable = 1;
@@ -228,7 +212,7 @@ private:
       RCLCPP_INFO(get_logger(), "Auto Track Mode Enable.");
     }
 
-    if (msg->data == "Auto Motion Mode Enable")
+    if (msg->data[0] == 22120000)
     {
       IMU_follow_enable = 0;
       auto_track_enable = 1;
@@ -246,10 +230,10 @@ private:
 
   void gimbal_controller_function()
   {
-    double P_gimbal_pitch = -75;
-    double P_gimbal_yaw   = -75;
+    double P_gimbal_pitch = 3.0;
+    double P_gimbal_yaw   = 3.0;
 
-    gimbal_action_pub_fun(30000001, P_gimbal_yaw*yaw_error, P_gimbal_pitch*pitch_error);
+    gimbal_action_pub_fun(22202100, P_gimbal_yaw*yaw_error, P_gimbal_pitch*pitch_error);
   }
 
   void vehicle_controller_function()
@@ -289,7 +273,7 @@ private:
       return;
     }
     
-    if (std::fabs(yaw_error + yaw_gimbal) > 1.0 && dt.count() < Max_Intervel) {
+    if (std::fabs(yaw_error + yaw_gimbal) > M_PI/4 && dt.count() < Max_Intervel) {
       robot_turning_start = 1;
       robot_motion_yaw = std::clamp((yaw_error + yaw_gimbal)*1.0, -1.0, 1.0);
       vehicle_action_pub_fun(25202123, 0.0, 0.0, robot_motion_yaw, 0.0);
@@ -358,11 +342,9 @@ private:
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr angle_error_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr          vehicle_angle_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr gimbal_angle_sub_;
-  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr            angle_reset_sub_;
+  rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr angle_reset_sub_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr    vehicle_action_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr    gimbal_action_pub_;
-
-  rclcpp::Time last_target_angle_time_;
 
   // Parameters
   std::string target_angle_topic_, angle_error_topic_, vehicle_angle_topic_, gimbal_angle_topic_, vehicle_cmd_topic_, gimbal_cmd_topic_, angle_reset_topic_;

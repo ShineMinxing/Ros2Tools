@@ -19,7 +19,12 @@ control_loop_node_250517:
     ANGLE_ERROR_TOPIC:   "SMX/TargetImageAngle"
     VEHICLE_ANGLE_TOPIC: "SMX/Odom"
     GIMBAL_ANGLE_TOPIC:  "SMX/GimbalState"
-    ANGLE_RESET_TOPIC:   "SMX/JoyStringCmd"
+    ANGLE_RESET_TOPIC:   "SMX/SportCmd"
     # 输出话题名
     VEHICLE_CMD_TOPIC:   "SMX/SportCmd"
-    GIMBAL_CMD_TOPIC:    "SMX/JoyFloatCmd"
+    GIMBAL_CMD_TOPIC:    "SMX/SportCmd"
+
+control_message_node:
+  ros__parameters:
+    joy_topic: "/joy"
+    sport_cmd_topic: "SMX/SportCmd"
