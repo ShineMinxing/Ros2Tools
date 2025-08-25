@@ -230,8 +230,8 @@ private:
 
   void gimbal_controller_function()
   {
-    double P_gimbal_pitch = 3.0;
-    double P_gimbal_yaw   = 3.0;
+    double P_gimbal_pitch = 1.0;
+    double P_gimbal_yaw   = 1.0;
 
     gimbal_action_pub_fun(22202100, P_gimbal_yaw*yaw_error, P_gimbal_pitch*pitch_error);
   }

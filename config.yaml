@@ -28,3 +28,14 @@ control_message_node:
   ros__parameters:
     joy_topic: "/joy"
     sport_cmd_topic: "SMX/SportCmd"
+
+drone_estimator:
+  ros__parameters:
+    input_obs_topic: /SMX/YOLO_Targets
+    output_state_topic: /SMX/DroneStateEstimate
+    x_apt: 0.0
+    y_apt: 0.0
+    z_apt: 0.0
+    g: 9.8
+    drag_k: 0.0123
+    c_int: 81.3
