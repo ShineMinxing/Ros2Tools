@@ -29,10 +29,13 @@ control_message_node:
     joy_topic: "/joy"
     sport_cmd_topic: "SMX/SportCmd"
 
-drone_estimator:
+drone_estimator_node:
   ros__parameters:
     input_obs_topic: /SMX/YOLO_Targets
     output_state_topic: /SMX/DroneStateEstimate
+    score_threshold: 1.5
     g: 9.8
     drag_k: 0.0123
     c_int: 81.3
+    parent_frame_id: "map"
+    child_frame_id: "uav"
