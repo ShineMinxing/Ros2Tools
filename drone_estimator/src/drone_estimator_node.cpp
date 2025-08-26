@@ -26,9 +26,6 @@ public:
         declare_parameter<std::string>("output_state_topic", "/SMX/DroneStateEstimate");
         declare_parameter<bool>("pick_nearest_axis", false);
         declare_parameter<double>("angle_axis_weight", 1.0);
-        declare_parameter<double>("x_apt", 0.0);
-        declare_parameter<double>("y_apt", 0.0);
-        declare_parameter<double>("z_apt", 0.0);
         declare_parameter<double>("g", 9.8);
         declare_parameter<double>("drag_k", 0.0123);
         declare_parameter<double>("c_int", 81.3);
@@ -40,9 +37,6 @@ public:
         // 取参
         input_obs_topic_     = get_parameter("input_obs_topic").as_string();
         output_state_topic_  = get_parameter("output_state_topic").as_string();
-        par_x_apt            = get_parameter("x_apt").as_double();
-        par_y_apt            = get_parameter("y_apt").as_double();
-        par_z_apt            = get_parameter("z_apt").as_double();
         par_g                = get_parameter("g").as_double();
         par_k                = get_parameter("drag_k").as_double();
         par_c_int            = get_parameter("c_int").as_double();
@@ -55,9 +49,6 @@ public:
         nz_ = StateSpaceModel3_.Nz;
 
         // 覆盖 Double_Par
-        StateSpaceModel3_.Double_Par[0]  = par_x_apt; // x_apt
-        StateSpaceModel3_.Double_Par[1]  = par_y_apt; // y_apt
-        StateSpaceModel3_.Double_Par[2]  = par_z_apt; // z_apt
         StateSpaceModel3_.Double_Par[10] = par_g;     // g
         StateSpaceModel3_.Double_Par[11] = par_k;     // drag_k
         StateSpaceModel3_.Double_Par[12] = par_c_int; // c_int
@@ -81,24 +72,50 @@ public:
 private:
     void obsCallback(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
     {
-        // data: [t_k, t_E, d, roll, pitch] * N
-        const auto &data = msg->data;
-        if (data.empty()) return;
-
-        const int stride = 5;
-        if (data.size() % stride != 0) {
-            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                                 "接收到的数据长度 %zu 不是 5 的整数倍，忽略本次。", data.size());
+        // 1) 基本校验
+        if (msg->data.empty() || msg->layout.dim.empty()) {
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "数据或布局为空。");
             return;
         }
-        const int n = static_cast<int>(data.size() / stride);
-        if (n <= 0) return;
 
-        int pick = 0;
+        const auto &data = msg->data;
+        const auto &d0   = msg->layout.dim[0];
 
-        // 组装 z（5 维）
+        // 2) 用 layout 推断 N 与每条观测维度 F (= stride/size)
+        if (d0.size == 0 || d0.stride == 0 || d0.stride % d0.size != 0 || (d0.stride / d0.size) != nz_ || static_cast<size_t>(d0.stride) != msg->data.size()) 
+        {
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                                "布局或数据不合法: size=%u stride=%u nz_=%d data=%zu",
+                                d0.size, d0.stride, nz_, msg->data.size());
+            return;
+        }
+
+        // 3) 解析 gimbal_location（来自 dim[0].label = "location:x,y,z"）
+        try {
+            const std::string &label = d0.label;
+            const std::string tag = "location:";
+            auto p = label.find(tag);
+            if (p != std::string::npos) {
+                std::string s = label.substr(p + tag.size()); // "x,y,z"
+                size_t p1 = s.find(',');
+                size_t p2 = (p1 == std::string::npos) ? std::string::npos : s.find(',', p1 + 1);
+                if (p1 != std::string::npos && p2 != std::string::npos) {
+                    StateSpaceModel3_.Double_Par[0] = std::stod(s.substr(0, p1));                  // x_apt
+                    StateSpaceModel3_.Double_Par[1] = std::stod(s.substr(p1 + 1, p2 - p1 - 1));    // y_apt
+                    StateSpaceModel3_.Double_Par[2] = std::stod(s.substr(p2 + 1));                 // z_apt
+                }
+            }
+        } catch (const std::exception &e) {
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                                "解析 gimbal_location 失败: %s", e.what());
+        }
+
+        // 4) 取第 0 条观测（如要“最近光轴”策略可在此挑选）
+        const int pick = 0;
+
         double z5[5];
-        for (int j = 0; j < 5; ++j) z5[j] = data[pick*stride + j];
+        for (int j = 0; j < 5; ++j) z5[j] = data[pick * d0.size + j];
+
 
         // 时间戳
         const double ts = this->now().seconds();
