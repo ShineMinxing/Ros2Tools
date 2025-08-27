@@ -8,6 +8,7 @@
 | **control\_message** | 监听手柄 `Joy` 话题，映射为统一的运动 / 姿态控制指令 (`SMX/SportCmd` 等)                   |
 | **control\_loop**    | 吊舱与机器人头部双闭环：<br>• 外环 – 头部 IMU → 目标角度<br>• 内环 – 实时云台伺服 & 机体运动补偿       |
 | **gimbal\_record**   | 录制相机、IMU、云台状态等多源数据，同步保存为 **H.264 MP4 + CSV**，方便科研分析                  |
+| **drone\_estimator** | 基于 YOLO-OBB 观测的无人机状态估计，调用 C 估计算法端口，输出 SMX/DroneStateEstimate 与 TF      |
 
 > 📝 这些包均可 **独立使用**，亦可与 [Ros2Go2Base](https://github.com/ShineMinxing/Ros2Go2Base) / [Ros2Go2Estimator](https://github.com/ShineMinxing/Ros2Go2Estimator) 等仓库协同。
 
@@ -19,6 +20,7 @@
 * **高效 C++17** – 关键节点手工内存管理，低延时、低 CPU 占用。
 * **可配置** – 统一 `config.yaml`，话题名 / 串口 / IMU UUID / 控制增益均可热更新。
 * **科研友好** – `gimbal_record` 同步写入帧精确时间戳，方便后期 Matlab / Python 分析。
+* **融合估计** – `drone_estimator` 支持多目标评分筛选、状态/预测 TF 广播。
 
 ---
 
@@ -30,6 +32,7 @@ Ros2Tools/
 ├── control_message/        # Joy → SportCmd 映射
 ├── control_loop/           # 头部 IMU ↔ 吊舱 / 机体闭环
 ├── gimbal_record/          # 数据采集器
+├── drone_estimator/        # 无人机观测与估计
 ├── config.yaml             # 全局参数示例
 └── Readme.md               # ← 当前文档
 ```
@@ -83,7 +86,12 @@ source install/setup.bash
 | `SMX/Camera_Raw` | `Camera_<time>.mp4` | H.264 硬编实时录制 |
 | 各状态话题            | `Msg_<time>.csv`    | 每帧一行同步记录     |
 
----
+### 5. control\_loop\_node
+
+* 订阅：`/SMX/YOLO_Target` (Float64MultiArray, N×6: 方位角,俯仰角,距离,roll,pitch,置信度)
+* 发布：`/SMX/DroneStateEstimate` ((Float64MultiArray, nx=9 状态))
+* 广播：`TF map -> uav` (估计状态), `map -> uav_pre` (预测状态)
+* 参数：支持score_threshold, g, drag_k, c_int, parent_frame_id, child_frame_id
 
 ## ⚙️ 运行示例
 
@@ -99,6 +107,9 @@ ros2 run control_message control_message_node
 
 # 4. 数据采集
 ros2 run gimbal_record gimbal_record_node
+
+# 5. 无人机状态估计
+ros2 run drone_estimator drone_estimator_node
 ```
 
 > `control_message_node` 可选参数文件：`--params-file Ros2Tools/config.yaml`
@@ -115,6 +126,7 @@ ros2 run gimbal_record gimbal_record_node
 | 380 m 距离偏差 3.3 % | [![img](https://i0.hdslb.com/bfs/archive/481731d2db755bbe087f44aeb3f48db29c159ada.jpg)](https://www.bilibili.com/video/BV1BhRAYDEsV/) |
 | 语音交互 + 地图导航      | [![img](https://i2.hdslb.com/bfs/archive/5b95c6eda3b6c9c8e0ba4124c1af9f3da10f39d2.jpg)](https://www.bilibili.com/video/BV1HCQBYUEvk/) |
 | 吊舱协同光点/人脸跟踪      | [![img](https://i0.hdslb.com/bfs/archive/5496e9d0b40915c62b69701fd1e23af7d6ffe7de.jpg)](https://www.bilibili.com/video/BV1faG1z3EFF/) |
+| 多图像源融合估计      | [![img](https://i1.hdslb.com/bfs/archive/68fa17f6b90c36137e32dc6553bb66b48c6836ea.jpg)](https://www.bilibili.com/video/BV13we1zEEED/) |
 
 ---
 
