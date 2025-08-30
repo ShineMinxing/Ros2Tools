@@ -11,6 +11,7 @@ find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(visualization_msgs REQUIRED)  # ★ 新增
 
 set(SMX_DIR ${CMAKE_CURRENT_SOURCE_DIR}/SMXFusionEstimator)
 
@@ -49,6 +50,7 @@ ament_target_dependencies(drone_estimator_node
   geometry_msgs
   tf2
   tf2_ros
+  visualization_msgs
 )
 
 install(TARGETS

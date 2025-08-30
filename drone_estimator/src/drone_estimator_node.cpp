@@ -9,6 +9,7 @@
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_ros/transform_broadcaster.h>
+#include <visualization_msgs/msg/marker.hpp>   // ★ 新增：RViz Marker
 
 extern "C" {
   #include "EstimatorPortN.h"
@@ -31,6 +32,11 @@ public:
         declare_parameter<double>("c_int", 81.3);
         declare_parameter<std::string>("parent_frame_id", "map");
         declare_parameter<std::string>("child_frame_id",  "uav");
+        declare_parameter<std::string>("rviz_mesh_resource",
+            "/home/unitree/ros2_ws/LeggedRobot/src/Ros2Tools/drone_estimator/src/Drone.STL");
+        declare_parameter<std::vector<double>>("rviz_scale", {1.0, 1.0, 1.0});
+        declare_parameter<std::vector<double>>("rviz_color", {0.6, 0.65, 0.7, 1.0});
+        declare_parameter<std::string>("rviz_ns", "drone_estimator");
 
         // 取参
         input_obs_topic_     = get_parameter("input_obs_topic").as_string();
@@ -41,6 +47,10 @@ public:
         par_c_int            = get_parameter("c_int").as_double();
         parent_frame_id_     = get_parameter("parent_frame_id").as_string();
         child_frame_id_      = get_parameter("child_frame_id").as_string();
+        rviz_mesh_resource_ = get_parameter("rviz_mesh_resource").as_string();
+        rviz_scale_         = get_parameter("rviz_scale").as_double_array();
+        rviz_color_         = get_parameter("rviz_color").as_double_array();
+        rviz_ns_            = get_parameter("rviz_ns").as_string();
 
         // 打印参数
         RCLCPP_INFO(this->get_logger(), "===== DroneEstimator 参数 =====");
@@ -52,6 +62,10 @@ public:
         RCLCPP_INFO(this->get_logger(), "c_int              : %.3f", par_c_int);
         RCLCPP_INFO(this->get_logger(), "parent_frame_id    : %s", parent_frame_id_.c_str());
         RCLCPP_INFO(this->get_logger(), "child_frame_id     : %s", child_frame_id_.c_str());
+        RCLCPP_INFO(this->get_logger(), "rviz_mesh_resource : %s", rviz_mesh_resource_.c_str());
+        RCLCPP_INFO(this->get_logger(), "rviz_scale         : [%.2f, %.2f, %.2f]", rviz_scale_[0], rviz_scale_[1], rviz_scale_[2]);
+        RCLCPP_INFO(this->get_logger(), "rviz_color         : [%.2f, %.2f, %.2f, %.2f]", rviz_color_[0], rviz_color_[1], rviz_color_[2], rviz_color_[3]);
+        RCLCPP_INFO(this->get_logger(), "rviz_ns            : %s", rviz_ns_.c_str());
         RCLCPP_INFO(this->get_logger(), "================================");
 
         // 初始化 C 估计端口
@@ -77,6 +91,9 @@ public:
 
         // TF 广播器
         tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+
+        // RViz Marker 发布器
+        marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("visualization_marker", 10);
     }
 
     ~DroneEstimatorNode() override {
@@ -239,6 +256,78 @@ private:
         tf_pre.transform.rotation.z = 0.0;
         tf_pre.transform.rotation.w = 1.0;
         tf_broadcaster_->sendTransform(tf_pre);
+
+        // RViz 网格模型 Marker（位姿与 tf_msg 一致，直接在 map 坐标系下显示）===
+        if (marker_pub_) {
+            visualization_msgs::msg::Marker drone_now;
+            drone_now.header.stamp = this->now();
+            drone_now.header.frame_id = parent_frame_id_;
+            drone_now.ns = "drone_estimator_now";
+            drone_now.id = 1;
+            drone_now.type = visualization_msgs::msg::Marker::MESH_RESOURCE;
+            drone_now.action = visualization_msgs::msg::Marker::ADD;
+
+            // 位置：采用当前估计位置
+            drone_now.pose.position.x = StateSpaceModel3_.EstimatedState[0];
+            drone_now.pose.position.y = StateSpaceModel3_.EstimatedState[3];
+            drone_now.pose.position.z = StateSpaceModel3_.EstimatedState[6];
+            // 姿态：无旋转（如有需要可改为估计朝向）
+            drone_now.pose.orientation.x = 0.0;
+            drone_now.pose.orientation.y = 0.0;
+            drone_now.pose.orientation.z = 0.0;
+            drone_now.pose.orientation.w = 1.0;
+
+            // 网格资源：file:// 绝对路径（RViz 需要 URI）
+            drone_now.mesh_resource = std::string("file://") + rviz_mesh_resource_;
+            drone_now.mesh_use_embedded_materials = false;
+
+            drone_now.color.r = rviz_color_[0];
+            drone_now.color.g = rviz_color_[1];
+            drone_now.color.b = rviz_color_[2];
+            drone_now.color.a = rviz_color_[3];
+
+            drone_now.scale.x = rviz_scale_[0];
+            drone_now.scale.y = rviz_scale_[1];
+            drone_now.scale.z = rviz_scale_[2];
+
+            drone_now.lifetime = rclcpp::Duration(0,0);
+            marker_pub_->publish(drone_now);
+
+
+            visualization_msgs::msg::Marker drone_pre;
+            drone_pre.header.stamp = this->now();
+            drone_pre.header.frame_id = parent_frame_id_;
+            drone_pre.ns = "drone_estimator_pre";
+            drone_pre.id = 1;
+            drone_pre.type = visualization_msgs::msg::Marker::MESH_RESOURCE;
+            drone_pre.action = visualization_msgs::msg::Marker::ADD;
+
+            // 位置：采用当前估计位置
+            drone_pre.pose.position.x = StateSpaceModel3_.PredictedState[0];
+            drone_pre.pose.position.y = StateSpaceModel3_.PredictedState[3];
+            drone_pre.pose.position.z = StateSpaceModel3_.PredictedState[6];
+            // 姿态：无旋转（如有需要可改为估计朝向）
+            drone_pre.pose.orientation.x = 0.0;
+            drone_pre.pose.orientation.y = 0.0;
+            drone_pre.pose.orientation.z = 0.0;
+            drone_pre.pose.orientation.w = 1.0;
+
+            // 网格资源：file:// 绝对路径（RViz 需要 URI）
+            drone_pre.mesh_resource = std::string("file://") + rviz_mesh_resource_;
+            drone_pre.mesh_use_embedded_materials = false;
+
+            drone_pre.color.r = 0;
+            drone_pre.color.g = 0;
+            drone_pre.color.b = 1;
+            drone_pre.color.a = 0.5;
+
+            drone_pre.scale.x = rviz_scale_[0];
+            drone_pre.scale.y = rviz_scale_[1];
+            drone_pre.scale.z = rviz_scale_[2];
+
+            drone_pre.lifetime = rclcpp::Duration(0,0);
+            marker_pub_->publish(drone_pre);
+        }
     }
 
     // 参数 & 句柄
@@ -247,10 +336,15 @@ private:
     double par_x_apt{0.0}, par_y_apt{0.0}, par_z_apt{0.0}, score_threshold{7}, par_g{9.8}, par_k{0.0123}, par_c_int{81.3};
     std::string parent_frame_id_{"map"};
     std::string child_frame_id_{"uav"};
+    std::string rviz_mesh_resource_;
+    std::vector<double> rviz_scale_;
+    std::vector<double> rviz_color_;
+    std::string rviz_ns_;
 
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr sub_obs_;
-    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr    pub_state_;
-    std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_state_;
+    std::unique_ptr<tf2_ros::TransformBroadcaster>  tf_broadcaster_;
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub_;
 
     // C 估计器实例
     int nx_{9};

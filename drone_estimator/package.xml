@@ -11,6 +11,7 @@
 
   <depend>rclcpp</depend>
   <depend>std_msgs</depend>
+  <depend>visualization_msgs</depend> <!-- ★ 新增：Marker 依赖 -->
 
   <export>
     <build_type>ament_cmake</build_type>
