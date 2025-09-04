@@ -55,19 +55,17 @@ private:
       if (Axes[3]||Axes[4]) publish_cmd(22232400, Axes[3], Axes[4], 0, 0);
     }
 
-    // ---- RT 持续 0.5 s ----
     if (Axes[5] < -0.5 && Axes[2] > 0.9 && Last_Operation_Duration_Time > 0.3) {
-      if      (Buttons[0]) publish_cmd(25100000,0,0,0,0);
-      else if (Buttons[1]) publish_cmd(25110000,0,0,0,0);
-      else if (Buttons[2]) publish_cmd(25120000,0,0,0,0);
-      else if (Buttons[3]) publish_cmd(25130000,0,0,0,0);
-      else if (Buttons[4]) publish_cmd(25140000,0,0,0,0);
-      else if (Buttons[5]) publish_cmd(25150000,0,0,0,0);
-      else if (Buttons[6]) publish_cmd(25160000,0,0,0,0);
-      else if (Buttons[7]) publish_cmd(25170000,0,0,0,0);
+      if      (Buttons[0]) publish_cmd(25100000,0,0,0,0); //A
+      else if (Buttons[1]) publish_cmd(25110000,0,0,0,0); //B
+      else if (Buttons[2]) publish_cmd(25120000,0,0,0,0); //X
+      else if (Buttons[3]) publish_cmd(25130000,0,0,0,0); //Y
+      else if (Buttons[4]) publish_cmd(25140000,0,0,0,0); //LB
+      else if (Buttons[5]) publish_cmd(25150000,0,0,0,0); //RB
+      else if (Buttons[6]) publish_cmd(25160000,0,0,0,0); //SELECT
+      else if (Buttons[7]) publish_cmd(25170000,0,0,0,0); //START
       else if (Axes[6]||Axes[7]) publish_cmd(25262700, Axes[6], Axes[7], 0, 0);
     }
-    // ---- LT 持续 0.5 s ----
     else if (Axes[2] < -0.5 && Axes[5] > 0.9 && Last_Operation_Duration_Time > 0.3) {
       if      (Buttons[0]) publish_cmd(22100000,0,0,0,0);
       else if (Buttons[1]) publish_cmd(22110000,0,0,0,0);
