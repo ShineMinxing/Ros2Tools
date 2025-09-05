@@ -134,6 +134,7 @@ private:
                     StateSpaceModel3_.Double_Par[2] = std::stod(s.substr(p2 + 1));                 // z_apt
                 }
             }
+            
         } catch (const std::exception &e) {
             RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 100, "解析 gimbal_location 失败: %s", e.what());
             return;
@@ -141,7 +142,7 @@ private:
 
         // 4) 取第最佳观测
         double currentTime = this->now().seconds();
-        double obser_temp[5], obser_error[8], score[20], pick[5], best_score = 0.0, dT = currentTime - lastTime;
+        double obser_temp[6], obser_error[3], record[10], score, pick[5], best_score = 0.0, dT = currentTime - lastTime;
 
         if(!InitiateFlag)
         {
@@ -149,10 +150,10 @@ private:
             {
                 for (int j = 0; j < nz_; ++j) 
                     obser_temp[j] = data[i * (nz_+1) + j];
-                score[i] = data[i * (nz_+1) + 5];
-                if(score[i] > best_score)
+                score = data[i * (nz_+1) + 5];
+                if(score > best_score)
                 {
-                    best_score = score[i];
+                    best_score = score;
                     for (int j = 0; j < nz_; ++j)
                         pick[j] = obser_temp[j];
                 }
@@ -180,23 +181,24 @@ private:
 
             for (int i = 0; i < label0.size; ++i)
             {
-                for (int j = 0; j < nz_; ++j)
+                for (int j = 0; j <= nz_; ++j)
                     obser_temp[j] = data[i * (nz_+1) + j];
 
                 obser_error[0] = abs(obser_temp[0] - z1_est + 0.01);
                 obser_error[1] = abs(obser_temp[1] - z2_est + 0.01);
                 obser_error[2] = abs(obser_temp[2] - z3_est + 0.01);
 
-                score[i] = z1_scp/obser_error[0] + z2_scp/obser_error[1] + z3_scp/obser_error[2] + data[i * (nz_+1) + 5] + dT;
+                score = z1_scp/obser_error[0] + z2_scp/obser_error[1] + z3_scp/obser_error[2] + obser_temp[5] + dT;
 
-                if(score[i] > best_score)
+                if(score > best_score)
                 {
-                    best_score = score[i];
-                    obser_error[3] = z1_scp/obser_error[0];
-                    obser_error[4] = z2_scp/obser_error[1];
-                    obser_error[5] = z3_scp/obser_error[2];
-                    obser_error[6] = z1_scp/data[i * (nz_+1) + 5];
-                    obser_error[7] = dT;
+                    best_score = score;
+                    record[0] = z1_scp/obser_error[0];
+                    record[1] = z1_scp/obser_error[1];
+                    record[2] = z1_scp/obser_error[2];
+                    record[3] = obser_temp[5];
+                    record[4] = dT;
+                    record[5] = obser_temp[2]*5/record[3];
                     for (int j = 0; j < nz_; ++j)
                         pick[j] = obser_temp[j];              
                 }
@@ -204,12 +206,15 @@ private:
 
             if(best_score < score_threshold)
             {
-                RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 33, "没有可信的目标, best_score=%.3lf, part_1=%.3lf, part_2=%.3lf, part_3=%.3lf, part_4=%.3lf, part_5=%.3lf,", best_score,obser_error[3],obser_error[4],obser_error[5],obser_error[6],obser_error[7]);
+                RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 33, "没有可信的目标, best_score=%.3lf, part_1=%.3lf, part_2=%.3lf, part_3=%.3lf, part_4=%.3lf, part_5=%.3lf,", best_score,record[0],record[1],record[2],record[3],record[4]);
                 return;
             }
         }
 
         lastTime = currentTime;
+
+        StateSpaceModel3_.Matrix_R[nz_ * 2 + 2] = record[5];
+        
 
         // 调用 C 接口估计
         StateSpaceModel3_EstimatorPort(pick, currentTime, &StateSpaceModel3_);
