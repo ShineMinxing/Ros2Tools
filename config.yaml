@@ -33,7 +33,7 @@ drone_estimator_node:
   ros__parameters:
     input_obs_topic: /SMX/YOLO_Targets
     output_state_topic: /SMX/DroneStateEstimate
-    score_threshold: 1.5
+    score_threshold: 0.5
     g: 9.8
     drag_k: 0.0123
     c_int: 81.3
@@ -41,5 +41,5 @@ drone_estimator_node:
     child_frame_id: "uav"
     rviz_mesh_resource: "/home/unitree/ros2_ws/LeggedRobot/src/Ros2Tools/drone_estimator/src/Drone.STL"
     rviz_scale: [0.003, 0.003, 0.003]
-    rviz_color: [0.6, 0.65, 0.7, 1.0]
+    rviz_color: [0.1, 0.7, 1.0, 0.95]
     rviz_ns: "drone_estimator"

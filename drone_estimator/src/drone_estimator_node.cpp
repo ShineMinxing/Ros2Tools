@@ -206,8 +206,13 @@ private:
 
             if(best_score < score_threshold)
             {
-                RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 33, "没有可信的目标, best_score=%.3lf, part_1=%.3lf, part_2=%.3lf, part_3=%.3lf, part_4=%.3lf, part_5=%.3lf,", best_score,record[0],record[1],record[2],record[3],record[4]);
+                // RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 33, "没有可信的目标, best_score=%.3lf, part_1=%.3lf, part_2=%.3lf, part_3=%.3lf, part_4=%.3lf, part_5=%.3lf,", best_score,record[0],record[1],record[2],record[3],record[4]);
+
+                // RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 33, "PASS: best_score=%.3lf,X=%.3lf,Y=%.3lf,Z=%.3lf,o1=%.3lf,o2=%.3lf,o3=%.3lf,o4=%.3lf,o5=%.3lf,p=%.3lf", best_score,StateSpaceModel3_.Double_Par[0],StateSpaceModel3_.Double_Par[1],StateSpaceModel3_.Double_Par[2],pick[0]/3.1415*180,pick[1]/3.1415*180,pick[2],pick[3]/3.1415*180,pick[4]/3.1415*180,record[3]);
                 return;
+            }else
+            {
+                // RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 33, "X=%.3lf,Y=%.3lf,Z=%.3lf,o1=%.3lf,o2=%.3lf,o3=%.3lf,o4=%.3lf,o5=%.3lf,p=%.3lf", StateSpaceModel3_.Double_Par[0],StateSpaceModel3_.Double_Par[1],StateSpaceModel3_.Double_Par[2],pick[0]/3.1415*180,pick[1]/3.1415*180,pick[2],pick[3]/3.1415*180,pick[4]/3.1415*180,record[3]);
             }
         }
 
@@ -323,8 +328,8 @@ private:
 
             drone_pre.color.r = 0;
             drone_pre.color.g = 0;
-            drone_pre.color.b = 1;
-            drone_pre.color.a = 0.5;
+            drone_pre.color.b = 0.5;
+            drone_pre.color.a = 0.2;
 
             drone_pre.scale.x = rviz_scale_[0];
             drone_pre.scale.y = rviz_scale_[1];
