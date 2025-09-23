@@ -142,7 +142,7 @@ private:
 
         // 4) 取第最佳观测
         double currentTime = this->now().seconds();
-        double obser_temp[6], obser_error[3], record[10], score, pick[5], best_score = 0.0, dT = currentTime - lastTime;
+        double obser_temp[6], obser_error[3], scope[4] = {0}, record[10], score, best_score = 0.0, pick[5], dT = currentTime - lastTime;
 
         if(!InitiateFlag)
         {
@@ -165,40 +165,48 @@ private:
         }
         else
         {
-            double dx = StateSpaceModel3_.EstimatedState[0] - StateSpaceModel3_.Double_Par[0];
-            double dy = StateSpaceModel3_.EstimatedState[3] - StateSpaceModel3_.Double_Par[1];
-            double dz = StateSpaceModel3_.EstimatedState[6] - StateSpaceModel3_.Double_Par[2];
+            double x_est = StateSpaceModel3_.EstimatedState[0];
+            double y_est = StateSpaceModel3_.EstimatedState[3];
+            double z_est = StateSpaceModel3_.EstimatedState[6];
 
-            double z1_est = atan2(dy, dx);
-            double z2_est = atan2(dz, sqrt(dx*dx + dy*dy));
-            double z3_est = sqrt(dx*dx + dy*dy + dz*dz);
-
-            double z1_scp = abs(StateSpaceModel3_.EstimatedState[1] * dT) + abs(StateSpaceModel3_.EstimatedState[4] * dT)  + abs(StateSpaceModel3_.EstimatedState[2] * StateSpaceModel3_.EstimatedState[2] * dT * dT / 2 /2) + abs(StateSpaceModel3_.EstimatedState[5] * StateSpaceModel3_.EstimatedState[5] * dT * dT / 2 /2);
-            double z2_scp = abs(StateSpaceModel3_.EstimatedState[7] * dT) + abs(StateSpaceModel3_.EstimatedState[8] * StateSpaceModel3_.EstimatedState[8] * dT * dT / 2 /2);
-            double z3_scp = z1_scp + z2_scp;
-            z1_scp = atan2(z1_scp, z3_est);
-            z2_scp = atan2(z2_scp, z3_est);
+            double x_obser = 0.0, y_obser = 0.0, z_obser = 0.0;
 
             for (int i = 0; i < label0.size; ++i)
             {
                 for (int j = 0; j <= nz_; ++j)
                     obser_temp[j] = data[i * (nz_+1) + j];
 
-                obser_error[0] = abs(obser_temp[0] - z1_est + 0.01);
-                obser_error[1] = abs(obser_temp[1] - z2_est + 0.01);
-                obser_error[2] = abs(obser_temp[2] - z3_est + 0.01);
+                x_obser = StateSpaceModel3_.Double_Par[0] + obser_temp[2] * cos(obser_temp[1]) * cos(obser_temp[0]);
+                y_obser = StateSpaceModel3_.Double_Par[1] + obser_temp[2] * cos(obser_temp[1]) * sin(-obser_temp[0]);
+                z_obser = StateSpaceModel3_.Double_Par[2] + obser_temp[2] * sin(obser_temp[1]);
+                
+                scope[0] = obser_temp[2] / 10 + 0.1;
+                scope[1] = abs(StateSpaceModel3_.EstimatedState[1]*dT + StateSpaceModel3_.EstimatedState[2]/2*dT*dT + scope[0]);
+                scope[2] = abs(StateSpaceModel3_.EstimatedState[4]*dT + StateSpaceModel3_.EstimatedState[5]/2*dT*dT + scope[0]);
+                scope[3] = abs(StateSpaceModel3_.EstimatedState[7]*dT + StateSpaceModel3_.EstimatedState[8]/2*dT*dT + scope[0]);
 
-                score = z1_scp/obser_error[0] + z2_scp/obser_error[1] + z3_scp/obser_error[2] + obser_temp[5] + dT;
+                obser_error[0] = abs(x_obser - x_est + 0.0001);
+                obser_error[1] = abs(y_obser - y_est + 0.0001);
+                obser_error[2] = abs(z_obser - z_est + 0.0001);
+
+                score = (std::clamp(scope[1]/obser_error[0],0.0,0.5) + std::clamp(scope[2]/obser_error[1],0.0,0.5) + std::clamp(scope[3]/obser_error[2],0.0,0.5)) * obser_temp[5] + dT*10;
 
                 if(score > best_score)
                 {
                     best_score = score;
-                    record[0] = z1_scp/obser_error[0];
-                    record[1] = z1_scp/obser_error[1];
-                    record[2] = z1_scp/obser_error[2];
-                    record[3] = obser_temp[5];
-                    record[4] = dT;
-                    record[5] = obser_temp[2]*5/record[3];
+                    record[0] = obser_temp[2]*5/obser_temp[5];
+                    record[1] = std::clamp(scope[1]/obser_error[0],0.0,0.5);
+                    record[2] = std::clamp(scope[2]/obser_error[1],0.0,0.5);
+                    record[3] = std::clamp(scope[3]/obser_error[2],0.0,0.5);
+                    record[4] = x_obser;
+                    record[5] = y_obser;
+                    record[6] = z_obser;
+                    // record[1] = x_est;
+                    // record[2] = x_obser - x_est;
+                    // record[3] = y_est;
+                    // record[4] = y_obser - y_est;
+                    // record[5] = z_est;
+                    // record[6] = z_obser - z_est;
                     for (int j = 0; j < nz_; ++j)
                         pick[j] = obser_temp[j];              
                 }
@@ -206,20 +214,21 @@ private:
 
             if(best_score < score_threshold)
             {
-                // RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 33, "没有可信的目标, best_score=%.3lf, part_1=%.3lf, part_2=%.3lf, part_3=%.3lf, part_4=%.3lf, part_5=%.3lf,", best_score,record[0],record[1],record[2],record[3],record[4]);
+                // RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 33, "没有可信的目标, best_score=%.3lf, R=%.3lf,\n part_1=%.3lf, part_2=%.3lf, part_3=%.3lf, part_4=%.3lf, part_5=%.3lf, part_6=%.3lf", best_score,record[0],record[1],record[2],record[3],record[4],record[5],record[6]);
 
-                // RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 33, "PASS: best_score=%.3lf,X=%.3lf,Y=%.3lf,Z=%.3lf,o1=%.3lf,o2=%.3lf,o3=%.3lf,o4=%.3lf,o5=%.3lf,p=%.3lf", best_score,StateSpaceModel3_.Double_Par[0],StateSpaceModel3_.Double_Par[1],StateSpaceModel3_.Double_Par[2],pick[0]/3.1415*180,pick[1]/3.1415*180,pick[2],pick[3]/3.1415*180,pick[4]/3.1415*180,record[3]);
+                // RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 33, "PASS: best_score=%.3lf,X=%.3lf,Y=%.3lf,Z=%.3lf,o1=%.3lf,o2=%.3lf,o3=%.3lf,o4=%.3lf,o5=%.3lf", best_score,StateSpaceModel3_.Double_Par[0],StateSpaceModel3_.Double_Par[1],StateSpaceModel3_.Double_Par[2],pick[0]/3.1415*180,pick[1]/3.1415*180,pick[2],pick[3]/3.1415*180,pick[4]/3.1415*180);
                 return;
             }else
             {
-                // RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 33, "X=%.3lf,Y=%.3lf,Z=%.3lf,o1=%.3lf,o2=%.3lf,o3=%.3lf,o4=%.3lf,o5=%.3lf,p=%.3lf", StateSpaceModel3_.Double_Par[0],StateSpaceModel3_.Double_Par[1],StateSpaceModel3_.Double_Par[2],pick[0]/3.1415*180,pick[1]/3.1415*180,pick[2],pick[3]/3.1415*180,pick[4]/3.1415*180,record[3]);
+                RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 33, "选中的目标, best_score=%.3lf, R=%.3lf,\n part_1=%.3lf, part_2=%.3lf, part_3=%.3lf, part_4=%.3lf, part_5=%.3lf, part_6=%.3lf", best_score,record[0],record[1],record[2],record[3],record[4],record[5],record[6]);
+
+                // RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 33, "X=%.3lf,Y=%.3lf,Z=%.3lf,o1=%.3lf,o2=%.3lf,o3=%.3lf,o4=%.3lf,o5=%.3lf", StateSpaceModel3_.Double_Par[0],StateSpaceModel3_.Double_Par[1],StateSpaceModel3_.Double_Par[2],pick[0]/3.1415*180,pick[1]/3.1415*180,pick[2],pick[3]/3.1415*180,pick[4]/3.1415*180);
             }
         }
 
         lastTime = currentTime;
 
-        StateSpaceModel3_.Matrix_R[nz_ * 2 + 2] = record[5];
-        
+        StateSpaceModel3_.Matrix_R[nz_ * 2 + 2] = record[0];
 
         // 调用 C 接口估计
         StateSpaceModel3_EstimatorPort(pick, currentTime, &StateSpaceModel3_);
@@ -257,7 +266,7 @@ private:
         geometry_msgs::msg::TransformStamped tf_pre;
         tf_pre.header.stamp = this->now();
         tf_pre.header.frame_id = parent_frame_id_;
-        tf_pre.child_frame_id  = "uav_pre";   // 你要的名字
+        tf_pre.child_frame_id  = child_frame_id_ + "_pre";
         tf_pre.transform.translation.x = StateSpaceModel3_.PredictedState[0];
         tf_pre.transform.translation.y = StateSpaceModel3_.PredictedState[3];
         tf_pre.transform.translation.z = StateSpaceModel3_.PredictedState[6];
@@ -272,7 +281,7 @@ private:
             visualization_msgs::msg::Marker drone_now;
             drone_now.header.stamp = this->now();
             drone_now.header.frame_id = parent_frame_id_;
-            drone_now.ns = "drone_estimator_now";
+            drone_now.ns = rviz_ns_ + "_now";
             drone_now.id = 1;
             drone_now.type = visualization_msgs::msg::Marker::MESH_RESOURCE;
             drone_now.action = visualization_msgs::msg::Marker::ADD;
@@ -307,7 +316,7 @@ private:
             visualization_msgs::msg::Marker drone_pre;
             drone_pre.header.stamp = this->now();
             drone_pre.header.frame_id = parent_frame_id_;
-            drone_pre.ns = "drone_estimator_pre";
+            drone_pre.ns = rviz_ns_ + "_pre";
             drone_pre.id = 1;
             drone_pre.type = visualization_msgs::msg::Marker::MESH_RESOURCE;
             drone_pre.action = visualization_msgs::msg::Marker::ADD;

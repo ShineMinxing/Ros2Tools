@@ -32,14 +32,14 @@ control_message_node:
 drone_estimator_node:
   ros__parameters:
     input_obs_topic: /SMX/YOLO_Targets
-    output_state_topic: /SMX/DroneStateEstimate
-    score_threshold: 0.5
+    output_state_topic: /SMX/DroneStateEstimate2
+    score_threshold: 1.2
     g: 9.8
     drag_k: 0.0123
     c_int: 81.3
     parent_frame_id: "map"
-    child_frame_id: "uav"
+    child_frame_id: "uav_offline"
     rviz_mesh_resource: "/home/unitree/ros2_ws/LeggedRobot/src/Ros2Tools/drone_estimator/src/Drone.STL"
     rviz_scale: [0.003, 0.003, 0.003]
-    rviz_color: [0.1, 0.7, 1.0, 0.95]
-    rviz_ns: "drone_estimator"
+    rviz_color: [0.0, 1.0, 1.0, 1.0]
+    rviz_ns: "drone_estimator_offline"
