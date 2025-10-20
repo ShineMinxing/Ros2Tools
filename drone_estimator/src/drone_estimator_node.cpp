@@ -180,7 +180,7 @@ private:
                 y_obser = StateSpaceModel3_.Double_Par[1] + obser_temp[2] * cos(obser_temp[1]) * sin(-obser_temp[0]);
                 z_obser = StateSpaceModel3_.Double_Par[2] + obser_temp[2] * sin(obser_temp[1]);
                 
-                scope[0] = obser_temp[2] / 10 + 0.1;
+                scope[0] = obser_temp[2] / 20;
                 scope[1] = abs(StateSpaceModel3_.EstimatedState[1]*dT + StateSpaceModel3_.EstimatedState[2]/2*dT*dT + scope[0]);
                 scope[2] = abs(StateSpaceModel3_.EstimatedState[4]*dT + StateSpaceModel3_.EstimatedState[5]/2*dT*dT + scope[0]);
                 scope[3] = abs(StateSpaceModel3_.EstimatedState[7]*dT + StateSpaceModel3_.EstimatedState[8]/2*dT*dT + scope[0]);
@@ -191,22 +191,19 @@ private:
 
                 score = (std::clamp(scope[1]/obser_error[0],0.0,0.5) + std::clamp(scope[2]/obser_error[1],0.0,0.5) + std::clamp(scope[3]/obser_error[2],0.0,0.5)) * obser_temp[5] + dT*10;
 
-                if(score > best_score)
+                if(score > best_score && StateSpaceModel3_.Double_Par[1] != -2)
                 {
                     best_score = score;
                     record[0] = obser_temp[2]*5/obser_temp[5];
-                    record[1] = std::clamp(scope[1]/obser_error[0],0.0,0.5);
-                    record[2] = std::clamp(scope[2]/obser_error[1],0.0,0.5);
-                    record[3] = std::clamp(scope[3]/obser_error[2],0.0,0.5);
+                    // record[1] = std::clamp(scope[1]/obser_error[0],0.0,0.5);
+                    // record[2] = std::clamp(scope[2]/obser_error[1],0.0,0.5);
+                    // record[3] = std::clamp(scope[3]/obser_error[2],0.0,0.5);
+                    record[1] = StateSpaceModel3_.Double_Par[0];
+                    record[2] = StateSpaceModel3_.Double_Par[1];
+                    record[3] = StateSpaceModel3_.Double_Par[2];
                     record[4] = x_obser;
                     record[5] = y_obser;
                     record[6] = z_obser;
-                    // record[1] = x_est;
-                    // record[2] = x_obser - x_est;
-                    // record[3] = y_est;
-                    // record[4] = y_obser - y_est;
-                    // record[5] = z_est;
-                    // record[6] = z_obser - z_est;
                     for (int j = 0; j < nz_; ++j)
                         pick[j] = obser_temp[j];              
                 }
@@ -220,7 +217,19 @@ private:
                 return;
             }else
             {
-                RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 33, "选中的目标, best_score=%.3lf, R=%.3lf,\n part_1=%.3lf, part_2=%.3lf, part_3=%.3lf, part_4=%.3lf, part_5=%.3lf, part_6=%.3lf", best_score,record[0],record[1],record[2],record[3],record[4],record[5],record[6]);
+                // RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 33, "选中的目标, best_score=%.3lf, R=%.3lf,\n part_1=%.3lf, part_2=%.3lf, part_3=%.3lf, part_4=%.3lf, part_5=%.3lf, part_6=%.3lf", best_score,record[0],record[1],record[2],record[3],record[4],record[5],record[6]);
+
+                std::cout << std::showpos; // 显示正号
+                std::cout << std::fixed << std::setprecision(3); // 固定小数点后3位
+                
+                std::cout
+                    << " X:" << std::setw(6) << std::internal << record[1]
+                    << " Y:" << std::setw(6) << std::internal << record[2]
+                    << " Z:" << std::setw(6) << std::internal << record[3]
+                    << " x:" << std::setw(6) << std::internal << record[4]
+                    << " y:" << std::setw(6) << std::internal << record[5]
+                    << " z:" << std::setw(6) << std::internal << record[6]
+                    << std::endl;
 
                 // RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 33, "X=%.3lf,Y=%.3lf,Z=%.3lf,o1=%.3lf,o2=%.3lf,o3=%.3lf,o4=%.3lf,o5=%.3lf", StateSpaceModel3_.Double_Par[0],StateSpaceModel3_.Double_Par[1],StateSpaceModel3_.Double_Par[2],pick[0]/3.1415*180,pick[1]/3.1415*180,pick[2],pick[3]/3.1415*180,pick[4]/3.1415*180);
             }

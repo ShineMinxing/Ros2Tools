@@ -27,13 +27,16 @@ control_loop_node_250517:
 control_message_node:
   ros__parameters:
     joy_topic: "/joy"
-    sport_cmd_topic: "SMX/SportCmd"
+    sport_cmd_topic: "/SportCmd"
+    # 如果报错 Permission denied 则 sudo usermod -aG input $USER 再reboot
+    Keyboard2Joystick_Enable: true
+    keyboard_publish_rate_hz: 10.0
 
 drone_estimator_node:
   ros__parameters:
     input_obs_topic: /SMX/YOLO_Targets
     output_state_topic: /SMX/DroneStateEstimate2
-    score_threshold: 1.2
+    score_threshold: 1.0
     g: 9.8
     drag_k: 0.0123
     c_int: 81.3
@@ -41,5 +44,5 @@ drone_estimator_node:
     child_frame_id: "uav_offline"
     rviz_mesh_resource: "/home/unitree/ros2_ws/LeggedRobot/src/Ros2Tools/drone_estimator/src/Drone.STL"
     rviz_scale: [0.003, 0.003, 0.003]
-    rviz_color: [0.0, 1.0, 1.0, 1.0]
+    rviz_color: [1.0, 1.0, 0.0, 1.0]
     rviz_ns: "drone_estimator_offline"
