@@ -3,7 +3,6 @@
 #include "std_msgs/msg/float64_multi_array.hpp"
 #include <string>
 
-// ====== 仅最小必要的新增头文件 ======
 #include <vector>
 #include <array>
 #include <thread>
@@ -25,12 +24,13 @@ public:
   explicit ControlMessageNode(const rclcpp::NodeOptions & opt)
   : Node("control_message_node", opt)
   {
-    // 从 config.yaml 读取参数（保持原有风格，不 declare，避免与 auto-declare 冲突）
+    // 读取原有参数
     this->get_parameter_or("joy_topic",       joy_topic_, std::string("/joy"));
     this->get_parameter_or("sport_cmd_topic", cmd_topic_, std::string("NoYamlRead/SportCmd"));
 
-    // 新增：是否启用键盘->/joy
+    // 新增参数：是否启用键盘→/joy；周期发布频率（Hz）
     this->get_parameter_or("Keyboard2Joystick_Enable", keyboard_enabled_, false);
+    this->get_parameter_or("keyboard_cmd_rate_hz", keyboard_cmd_rate_hz_, 20.0); // N Hz
 
     cmd_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(cmd_topic_, 10);
     joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>(
@@ -38,8 +38,8 @@ public:
 
     last_op_time_ = this->now();
     RCLCPP_INFO(this->get_logger(),
-      "ControlMessageNode listening '%s' → publishing '%s' (Keyboard2Joystick_Enable=%s)",
-      joy_topic_.c_str(), cmd_topic_.c_str(), keyboard_enabled_ ? "true" : "false");
+      "ControlMessageNode listening '%s' → publishing '%s' (Keyboard2Joystick_Enable=%s, keyboard_cmd_rate_hz=%.1f)",
+      joy_topic_.c_str(), cmd_topic_.c_str(), keyboard_enabled_ ? "true" : "false", keyboard_cmd_rate_hz_);
 
     if (keyboard_enabled_) {
       joy_kb_pub_ = this->create_publisher<sensor_msgs::msg::Joy>(joy_topic_, 10);
@@ -47,6 +47,14 @@ public:
       if (open_all_keyboard_events_()) {
         kb_running_.store(true);
         kb_thread_ = std::thread([this]{ keyboard_reader_loop_(); });
+
+        // 周期定时器：只有有按键活动时才按 N Hz 周期发布
+        auto period = std::chrono::milliseconds((int)(1000.0 / std::max(1.0, keyboard_cmd_rate_hz_)));
+        kb_timer_ = this->create_wall_timer(
+          period, [this](){
+            if (!joy_kb_pub_) return;
+            if (is_any_active_()) publish_current_joy_();
+          });
       } else {
         RCLCPP_ERROR(this->get_logger(),
           "No keyboard event device opened. Add user to 'input' group or run with sudo.");
@@ -62,45 +70,42 @@ public:
   }
 
 private:
-  /* ===================== 原始逻辑：订阅 /joy 并发布命令（未改） ===================== */
+  /* ===================== 原始逻辑（未改） ===================== */
   void joy_cb(const sensor_msgs::msg::Joy::SharedPtr m)
   {
-    // 1) 读取按键 / 摇杆
     for (int i = 0; i < 8 && i < (int)m->buttons.size(); ++i) Buttons[i] = m->buttons[i];
     for (int i = 0; i < 8 && i < (int)m->axes.size();    ++i) Axes[i]    = m->axes[i];
 
-    // 2) 计算距上次发布的间隔
     now_time_  = this->now();
     Last_Operation_Duration_Time = (now_time_ - last_op_time_).seconds();
 
-    /* ============ 映射逻辑：保持不变 ============ */
     if (Buttons[6]) { publish_cmd(16000000,0,0,0,0); return; }
 
     if (Buttons[4] && Buttons[5] && Last_Operation_Duration_Time > 0.3) {
       publish_cmd(14150000,0,0,0,0); return;
     }
 
-    // ---- 只按 RT ----
+    // 只按 RT
     if (Axes[5] < -0.5 && Axes[2] > 0.9) {
       if (Axes[0]||Axes[1]||Axes[3]||Axes[4])
         publish_cmd(25202123, Axes[0], Axes[1], Axes[3], Axes[4]);
     }
 
-    // ---- 只按 LT ----
+    // 只按 LT
     if (Axes[2] < -0.5 && Axes[5] > 0.9) {
       if (Axes[0]||Axes[1]) publish_cmd(22202100, Axes[0], Axes[1], 0, 0);
       if (Axes[3]||Axes[4]) publish_cmd(22232400, Axes[3], Axes[4], 0, 0);
     }
 
     if (Axes[5] < -0.5 && Axes[2] > 0.9 && Last_Operation_Duration_Time > 0.3) {
-      if      (Buttons[0]) publish_cmd(25100000,0,0,0,0); //A
-      else if (Buttons[1]) publish_cmd(25110000,0,0,0,0); //B
-      else if (Buttons[2]) publish_cmd(25120000,0,0,0,0); //X
-      else if (Buttons[3]) publish_cmd(25130000,0,0,0,0); //Y
-      else if (Buttons[4]) publish_cmd(25140000,0,0,0,0); //LB
-      else if (Buttons[5]) publish_cmd(25150000,0,0,0,0); //RB
-      else if (Buttons[6]) publish_cmd(25160000,0,0,0,0); //SELECT
-      else if (Buttons[7]) publish_cmd(25170000,0,0,0,0); //START
+      if      (Buttons[0]) publish_cmd(25100000,0,0,0,0);
+      else if (Buttons[1]) publish_cmd(25110000,0,0,0,0);
+      else if (Buttons[2]) publish_cmd(25120000,0,0,0,0);
+      else if (Buttons[3]) publish_cmd(25130000,0,0,0,0);
+      else if (Buttons[4]) publish_cmd(25140000,0,0,0,0);
+      else if (Buttons[5]) publish_cmd(25150000,0,0,0,0);
+      else if (Buttons[6]) publish_cmd(25160000,0,0,0,0);
+      else if (Buttons[7]) publish_cmd(25170000,0,0,0,0);
       else if (Axes[6]||Axes[7]) publish_cmd(25262700, Axes[6], Axes[7], 0, 0);
     }
     else if (Axes[2] < -0.5 && Axes[5] > 0.9 && Last_Operation_Duration_Time > 0.3) {
@@ -116,7 +121,6 @@ private:
     }
   }
 
-  /* 只有在真正发布时才更新时间戳（未改） */
   void publish_cmd(int code, double v1, double v2, double v3, double v4)
   {
     std_msgs::msg::Float64MultiArray out;
@@ -125,7 +129,7 @@ private:
     last_op_time_ = now_time_;
   }
 
-  /* ===================== 键盘 → Joy（监听全部键盘，事件驱动发布） ===================== */
+  /* ===================== 键盘 → Joy（事件驱动 + 活动期 N Hz 周期） ===================== */
   void init_keyboard_state_()
   {
     kb_buttons_.fill(0);
@@ -135,10 +139,10 @@ private:
     kb_axes_[5] = +1.0f; // RT (Space)
     l_left_ = l_right_ = l_up_ = l_down_ = false;
     r_left_ = r_right_ = r_up_ = r_down_ = false;
+    d6_neg_=d6_pos_=d7_pos_=d7_neg_=false; // J/L/K/; 状态
     alt_down_ = space_down_ = false;
   }
 
-  // 解析 /proc/bus/input/devices，找出所有带 "kbd" 的 eventX
   std::vector<std::string> enumerate_keyboard_event_paths_()
   {
     std::vector<std::string> paths;
@@ -156,7 +160,6 @@ private:
             auto pos = tok.find("event");
             if (pos != std::string::npos) {
               std::string ev = tok.substr(pos);
-              // 确保 event 后都是数字
               if (ev.size() >= 6 && std::all_of(ev.begin()+5, ev.end(), ::isdigit)) {
                 paths.emplace_back("/dev/input/" + ev);
               }
@@ -189,7 +192,7 @@ private:
     return !kb_fds_.empty();
   }
 
-  // 事件驱动：有按键“按下/抬起”才发布（忽略 repeat=2）
+  // poll 事件：有“按下/抬起”就更新状态；立即发一次；其余发布交给 N Hz 定时器（活动期）
   void keyboard_reader_loop_()
   {
     std::vector<pollfd> pfds;
@@ -212,9 +215,10 @@ private:
             }
           }
         }
-        if (changed) publish_current_joy_();  // 仅当有变化才发布
+        if (changed) {
+          publish_current_joy_(); // 变化瞬间立即发一次
+        }
       }
-      // 小睡降低CPU
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
   }
@@ -232,7 +236,6 @@ private:
   bool handle_key_event_(unsigned short code, int value)
   {
     const bool pressed = (value != 0);
-    bool changed = false;
 
     // 1..8 → Buttons[0..7]
     if (code >= KEY_1 && code <= KEY_8) {
@@ -243,7 +246,7 @@ private:
     // WASD → 左摇杆
     if (code == KEY_A || code == KEY_D || code == KEY_W || code == KEY_S) {
       std::lock_guard<std::mutex> lk(kb_mtx_);
-      bool old0 = kb_axes_[0], old1 = kb_axes_[1];
+      float old0 = kb_axes_[0], old1 = kb_axes_[1];
       if (code == KEY_A) l_left_  = pressed;
       if (code == KEY_D) l_right_ = pressed;
       if (code == KEY_W) l_up_    = pressed;
@@ -255,7 +258,7 @@ private:
     // 方向键 → 右摇杆
     if (code == KEY_LEFT || code == KEY_RIGHT || code == KEY_UP || code == KEY_DOWN) {
       std::lock_guard<std::mutex> lk(kb_mtx_);
-      bool old3 = kb_axes_[3], old4 = kb_axes_[4];
+      float old3 = kb_axes_[3], old4 = kb_axes_[4];
       if (code == KEY_LEFT)  r_left_  = pressed;
       if (code == KEY_RIGHT) r_right_ = pressed;
       if (code == KEY_UP)    r_up_    = pressed;
@@ -264,46 +267,60 @@ private:
       return (old3 != kb_axes_[3]) || (old4 != kb_axes_[4]);
     }
 
-    // Alt → LB + LT（按钮 + 轴）
+    // J / L / K / ; → axes[6] -1 / +1  axes[7] +1 / -1
+    if (code == KEY_J || code == KEY_L || code == KEY_K || code == KEY_SEMICOLON) {
+      std::lock_guard<std::mutex> lk(kb_mtx_);
+      float old6 = kb_axes_[6];
+      float old7 = kb_axes_[7];
+      if (code == KEY_J)   d7_neg_ = pressed;
+      if (code == KEY_L)   d6_neg_ = pressed;
+      if (code == KEY_K)   d6_pos_ = pressed;
+      if (code == KEY_SEMICOLON)   d7_pos_ = pressed;
+      compose_axes67_();
+      return (old6 != kb_axes_[6] || old7 != kb_axes_[7]);
+    }
+
+    // Alt → LT（轴）
     if (code == KEY_LEFTALT || code == KEY_RIGHTALT) {
       std::lock_guard<std::mutex> lk(kb_mtx_);
-      bool old_b = kb_buttons_[4];
       float old_a = kb_axes_[2];
       alt_down_   = pressed;
-      kb_buttons_[4] = alt_down_ ? 1 : 0;         // LB
       kb_axes_[2]    = alt_down_ ? -1.0f : +1.0f; // LT
-      return (old_b != kb_buttons_[4]) || (old_a != kb_axes_[2]);
+      return (old_a != kb_axes_[2]);
     }
 
-    // Space → RB + RT（按钮 + 轴）
+    // Space → RT（轴）
     if (code == KEY_SPACE) {
       std::lock_guard<std::mutex> lk(kb_mtx_);
-      bool  old_b = kb_buttons_[5];
       float old_a = kb_axes_[5];
       space_down_ = pressed;
-      kb_buttons_[5] = space_down_ ? 1 : 0;       // RB
-      kb_axes_[5]    = space_down_ ? -1.0f : +1.0f; // RT
-      return (old_b != kb_buttons_[5]) || (old_a != kb_axes_[5]);
+      kb_axes_[5]    = space_down_ ? -1.0f : +1.0f;// RT
+      return (old_a != kb_axes_[5]);
     }
 
-    return changed;
+    return false;
   }
 
   void compose_left_stick_()
   {
-    kb_axes_[0] = (l_right_ ? 1.0f : 0.0f) + (l_left_ ? -1.0f : 0.0f);
+    kb_axes_[0] = (l_right_ ? -1.0f : 0.0f) + (l_left_ ? 1.0f : 0.0f);
     kb_axes_[1] = (l_up_    ? 1.0f : 0.0f) + (l_down_ ? -1.0f : 0.0f);
   }
 
   void compose_right_stick_()
   {
-    kb_axes_[3] = (r_right_ ? 1.0f : 0.0f) + (r_left_ ? -1.0f : 0.0f);
+    kb_axes_[3] = (r_right_ ? -1.0f : 0.0f) + (r_left_ ? 1.0f : 0.0f);
     kb_axes_[4] = (r_up_    ? 1.0f : 0.0f) + (r_down_ ? -1.0f : 0.0f);
+  }
+
+  void compose_axes67_()
+  {
+    kb_axes_[6] = (d6_pos_ ? 1.0f : 0.0f) + (d6_neg_ ? -1.0f : 0.0f);
+    kb_axes_[7] = (d7_pos_ ? 1.0f : 0.0f) + (d7_neg_ ? -1.0f : 0.0f);
   }
 
   void publish_current_joy_()
   {
-    if (!joy_kb_pub_) return;
     sensor_msgs::msg::Joy msg;
     {
       std::lock_guard<std::mutex> lk(kb_mtx_);
@@ -312,6 +329,24 @@ private:
     }
     msg.header.stamp = this->now();
     joy_kb_pub_->publish(msg);
+  }
+
+  // 是否存在“活动”输入（任意按钮=1，或任意轴≠默认中性态）
+  bool is_any_active_()
+  {
+    std::lock_guard<std::mutex> lk(kb_mtx_);
+    // 按钮
+    for (int b : kb_buttons_) if (b != 0) return true;
+    // 轴：中性态为 {0,0,+1,0,0,+1,0,0}
+    if (kb_axes_[0] != 0.0f) return true;
+    if (kb_axes_[1] != 0.0f) return true;
+    if (kb_axes_[2] != +1.0f) return true;
+    if (kb_axes_[3] != 0.0f) return true;
+    if (kb_axes_[4] != 0.0f) return true;
+    if (kb_axes_[5] != +1.0f) return true;
+    if (kb_axes_[6] != 0.0f) return true;
+    if (kb_axes_[7] != 0.0f) return true;
+    return false;
   }
 
 private:
@@ -332,18 +367,22 @@ private:
 
   // ===== 键盘相关（新增）=====
   bool   keyboard_enabled_{false};
+  double keyboard_cmd_rate_hz_{20.0};
 
   rclcpp::Publisher<sensor_msgs::msg::Joy>::SharedPtr joy_kb_pub_;
+  rclcpp::TimerBase::SharedPtr kb_timer_;
   std::thread kb_thread_;
   std::atomic<bool> kb_running_{false};
   std::mutex kb_mtx_;
 
-  std::vector<int> kb_fds_;                 // 监听的所有键盘 event fd
-  std::array<int,   8> kb_buttons_{};       // A,B,X,Y,LB,RB,SELECT,START
-  std::array<float, 8> kb_axes_{};          // 0/1 左摇杆, 2 LT, 3/4 右摇杆, 5 RT
+  std::vector<int> kb_fds_;
+  std::array<int,   8>  kb_buttons_{};  // A,B,X,Y,LB,RB,SELECT,START
+  std::array<float, 8>  kb_axes_{};     // 0/1 左摇杆, 2 LT, 3/4 右摇杆, 5 RT, 6/7 = 新增 JKL;
 
   bool l_left_{false},  l_right_{false}, l_up_{false},  l_down_{false};
   bool r_left_{false},  r_right_{false}, r_up_{false},  r_down_{false};
+  bool d6_neg_{false}, d6_pos_{false};  // J(-1), L(+1)
+  bool d7_pos_{false}, d7_neg_{false};  // K(+1), ;(-1)
   bool alt_down_{false}, space_down_{false};
 };
 
