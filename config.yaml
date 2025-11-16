@@ -29,6 +29,7 @@ control_message_node:
     joy_topic: "/joy"
     sport_cmd_topic: "SMX/SportCmd"
     # 如果报错 Permission denied 则 sudo usermod -aG input $USER 再reboot
+    # wasd 上下左右 Alt Space J K L ; 对应8个Axes，1~8对应8个Button
     Keyboard2Joystick_Enable: true
     keyboard_cmd_rate_hz: 20.0
 
@@ -46,3 +47,16 @@ drone_estimator_node:
     rviz_scale: [0.003, 0.003, 0.003]
     rviz_color: [1.0, 1.0, 0.0, 1.0]
     rviz_ns: "drone_estimator_offline"
+
+rosbagtopic_rename_node:
+  ros__parameters:
+    # 输入包：就是 ros2 bag info 里看到的那个目录（不是 .db3 文件）
+    input_bag: "/home/unitree/ros2_ws/LeggedRobot/src/Ros2SLAM/local/go2_slam_bag"
+    # 输出包目录：脚本会创建一个新的 bag（如果已经存在就报错退出）
+    output_bag: "/home/unitree/ros2_ws/LeggedRobot/src/Ros2SLAM/local/go2_slam_bag_0"
+    # 多个 topic 的映射表：旧名 -> 新名
+    topic_mappings:
+      "/SMX/Go2Lidar": "/points2"
+      "/SMX/Go2IMU":   "/imu"
+      "/SMX/Odom":     "/odom"
+    overwrite: true

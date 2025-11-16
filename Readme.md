@@ -2,13 +2,14 @@
 
 一组面向 **Unitree Go2 / 双足机器人** 的 **ROS 2 Humble / Ubuntu 22.04** 实用工具包。
 
-| Package              | 功能简述                                                                 |
-| -------------------- | -------------------------------------------------------------------- |
-| **bt\_imu**          | 通过蓝牙读取 *VIT 智能眼镜* IMU，将姿态信息发布为 ROS2 话题 (`SMX/BTIMU` / `SMX/BTAngle`) |
-| **control\_message** | 监听手柄 `Joy` 话题，映射为统一的运动 / 姿态控制指令 (`SMX/SportCmd` 等)                   |
-| **control\_loop**    | 吊舱与机器人头部双闭环：<br>• 外环 – 头部 IMU → 目标角度<br>• 内环 – 实时云台伺服 & 机体运动补偿       |
-| **gimbal\_record**   | 录制相机、IMU、云台状态等多源数据，同步保存为 **H.264 MP4 + CSV**，方便科研分析                  |
-| **drone\_estimator** | 基于 YOLO-OBB 观测的无人机状态估计，调用 C 估计算法端口，输出 SMX/DroneStateEstimate 与 TF      |
+| Package                | 功能简述                                                                                     |
+| ---------------------- | ---------------------------------------------------------------------------------------- |
+| **bt_imu**             | 通过蓝牙读取 *VIT 智能眼镜* IMU，将姿态信息发布为 ROS2 话题 (`SMX/BTIMU` / `SMX/BTAngle`)                     |
+| **control_message**    | 监听手柄 `Joy` 话题，映射为统一的运动 / 姿态控制指令 (`SMX/SportCmd` 等)                                       |
+| **control_loop**       | 吊舱与机器人头部双闭环：<br>• 外环 – 头部 IMU → 目标角度<br>• 内环 – 实时云台伺服 & 机体运动补偿                           |
+| **gimbal_record**      | 录制相机、IMU、云台状态等多源数据，同步保存为 **H.264 MP4 + CSV**，方便科研分析                                      |
+| **drone_estimator**    | 基于 YOLO-OBB 观测的无人机状态估计，调用 C 估计算法端口，输出 `SMX/DroneStateEstimate` 与 TF                      |
+| **rosbagtopic_rename** | 离线 rosbag2 话题重命名工具，将 `/SMX/**` 等自定义话题批量改写为标准名（如 `/points2` `/imu` `/odom`），便于与 SLAM 算法对接 |
 
 > 📝 这些包均可 **独立使用**，亦可与 [Ros2Go2Base](https://github.com/ShineMinxing/Ros2Go2Base) / [Ros2Go2Estimator](https://github.com/ShineMinxing/Ros2Go2Estimator) 等仓库协同。
 
@@ -18,9 +19,10 @@
 
 * **即插即用** – 纯 ROS2 实现，无外部依赖（`bt_imu` 需蓝牙 4.0+）。
 * **高效 C++17** – 关键节点手工内存管理，低延时、低 CPU 占用。
-* **可配置** – 统一 `config.yaml`，话题名 / 串口 / IMU UUID / 控制增益均可热更新。
+* **可配置** – 统一 `config.yaml`，话题名 / 串口 / IMU UUID / 控制增益 / bag 映射均可集中管理。
 * **科研友好** – `gimbal_record` 同步写入帧精确时间戳，方便后期 Matlab / Python 分析。
 * **融合估计** – `drone_estimator` 支持多目标评分筛选、状态/预测 TF 广播。
+* **SLAM 对接** – `rosbagtopic_rename` 为 Ros2SLAM 等仓库提供标准化的 `/points2` / `/imu` / `/odom` 话题接口。
 
 ---
 
@@ -33,6 +35,7 @@ Ros2Tools/
 ├── control_loop/           # 头部 IMU ↔ 吊舱 / 机体闭环
 ├── gimbal_record/          # 数据采集器
 ├── drone_estimator/        # 无人机观测与估计
+├── rosbagtopic_rename/     # rosbag2 话题重命名工具
 ├── config.yaml             # 全局参数示例
 └── Readme.md               # ← 当前文档
 ```
@@ -46,9 +49,16 @@ Ros2Tools/
 cd ~/ros2_ws/LeggedRobot/src
 git clone --recursive https://github.com/ShineMinxing/Ros2Tools.git
 
-# 2. 编译所需包
+# 2. 编译基础工具包
 cd .. && colcon build --packages-select \
-  bt_imu control_message control_loop gimbal_record
+  bt_imu control_message control_loop gimbal_record\ source install/setup.bash
+```
+
+如需启用 **rosbagtopic_rename**（用于与 Ros2SLAM 等仓库联动）：
+
+```bash
+cd ~/ros2_ws/LeggedRobot
+colcon build --packages-select rosbagtopic_rename
 source install/setup.bash
 ```
 
@@ -56,14 +66,14 @@ source install/setup.bash
 
 ## 📝 主要节点概要
 
-### 1. bt\_imu\_node
+### 1. bt_imu_node
 
 | 话题            | 类型                           | 方向 | 说明                 |
 | ------------- | ---------------------------- | -- | ------------------ |
 | `SMX/BTIMU`   | `sensor_msgs/Imu`            | 发布 | 完整四元数 + 角速度 + 线加速度 |
 | `SMX/BTAngle` | `std_msgs/Float64MultiArray` | 发布 | Roll、Pitch、Yaw（°）  |
 
-### 2. control\_message\_node
+### 2. control_message_node
 
 | 输入                         | 输出                                            | 描述                         |
 | -------------------------- | --------------------------------------------- | -------------------------- |
@@ -71,7 +81,7 @@ source install/setup.bash
 
 详细映射请查看 `control_message/src/control_message_node.cpp`。默认 LT+RT 解锁，RT+左摇杆移动，RT+右摇杆旋转。
 
-### 3. control\_loop\_node
+### 3. control_loop_node
 
 * 订阅：`SMX/BTAngle`、`SMX/GimbalState`、`SMX/Odom`…
 * 内部双环：
@@ -79,19 +89,35 @@ source install/setup.bash
   1. **IMU 外环** – 计算目标 Pitch/Yaw
   2. **云台内环** – PID 驱动 G1 吊舱，同时给 `SMX/SportCmd` 微量位移补偿
 
-### 4. gimbal\_record\_node
+### 4. gimbal_record_node
 
 | 数据源              | 文件                  | 说明           |
 | ---------------- | ------------------- | ------------ |
 | `SMX/Camera_Raw` | `Camera_<time>.mp4` | H.264 硬编实时录制 |
 | 各状态话题            | `Msg_<time>.csv`    | 每帧一行同步记录     |
 
-### 5. control\_loop\_node
+### 5. control_loop_node
 
-* 订阅：`/SMX/YOLO_Target` (Float64MultiArray, N×6: 方位角,俯仰角,距离,roll,pitch,置信度)
-* 发布：`/SMX/DroneStateEstimate` ((Float64MultiArray, nx=9 状态))
+* 订阅：`/SMX/YOLO_Target` (`Float64MultiArray`, N×6: 方位角,俯仰角,距离,roll,pitch,置信度)
+* 发布：`/SMX/DroneStateEstimate` (`Float64MultiArray`, nx=9 状态)
 * 广播：`TF map -> uav` (估计状态), `map -> uav_pre` (预测状态)
-* 参数：支持score_threshold, g, drag_k, c_int, parent_frame_id, child_frame_id
+* 参数：支持 `score_threshold`, `g`, `drag_k`, `c_int`, `parent_frame_id`, `child_frame_id`
+
+### 6. rosbagtopic_rename_node
+
+离线 rosbag2 话题重写工具，用于在不同工程之间统一传感器话题命名（尤其是对接 SLAM 算法时）。
+
+* 配置入口：`Ros2Tools/config.yaml` 中的 `rosbagtopic_rename_node/ros__parameters` 段
+
+* 运行方式：
+
+  ```bash
+  ros2 run rosbagtopic_rename rosbagtopic_rename_node
+  ```
+
+  节点会读取 `input_bag`，按 `topic_mappings` 批量重命名所有消息，并写入到 `output_bag`。原始数据不会被覆盖，便于反复试验与调参。
+
+---
 
 ## ⚙️ 运行示例
 
@@ -110,9 +136,13 @@ ros2 run gimbal_record gimbal_record_node
 
 # 5. 无人机状态估计
 ros2 run drone_estimator drone_estimator_node
+
+# 6. rosbag 话题重命名（配合 Ros2SLAM 等工程使用）
+ros2 run rosbagtopic_rename rosbagtopic_rename_node
 ```
 
-> `control_message_node` 可选参数文件：`--params-file Ros2Tools/config.yaml`
+> `control_message_node` 与 `rosbagtopic_rename_node` 均可通过参数文件指定配置：
+> `--params-file Ros2Tools/config.yaml`
 
 ---
 
