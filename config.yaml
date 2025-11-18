@@ -30,7 +30,7 @@ control_message_node:
     sport_cmd_topic: "SMX/SportCmd"
     # 如果报错 Permission denied 则 sudo usermod -aG input $USER 再reboot
     # wasd 上下左右 Alt Space J K L ; 对应8个Axes，1~8对应8个Button
-    Keyboard2Joystick_Enable: true
+    Keyboard2Joystick_Enable: false
     keyboard_cmd_rate_hz: 20.0
 
 drone_estimator_node:
