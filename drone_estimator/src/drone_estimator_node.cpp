@@ -33,7 +33,7 @@ public:
         declare_parameter<std::string>("parent_frame_id", "map");
         declare_parameter<std::string>("child_frame_id",  "uav");
         declare_parameter<std::string>("rviz_mesh_resource",
-            "/home/unitree/ros2_ws/LeggedRobot/src/Ros2Tools/drone_estimator/src/Drone.STL");
+            "/home/smx/WorkSpace/GDS_LeggedRobot/src/Ros2Tools/drone_estimator/src/Drone.STL");
         declare_parameter<std::vector<double>>("rviz_scale", {1.0, 1.0, 1.0});
         declare_parameter<std::vector<double>>("rviz_color", {0.6, 0.65, 0.7, 1.0});
         declare_parameter<std::string>("rviz_ns", "drone_estimator");
@@ -144,7 +144,7 @@ private:
         double currentTime = this->now().seconds();
         double obser_temp[6], obser_error[3], scope[4] = {0}, record[10], score, best_score = 0.0, pick[5], dT = currentTime - lastTime;
 
-        if(!InitiateFlag)
+        if(!InitiateFlag) //每个消息中可能检测到多个目标，初始化时使用可能性最大的目标作为无人机
         {
             for (int i = 0; i < label0.size; ++i)
             {
@@ -165,12 +165,14 @@ private:
         }
         else
         {
+            // 获取估计的无人机位置
             double x_est = StateSpaceModel3_.EstimatedState[0];
             double y_est = StateSpaceModel3_.EstimatedState[3];
             double z_est = StateSpaceModel3_.EstimatedState[6];
 
             double x_obser = 0.0, y_obser = 0.0, z_obser = 0.0;
 
+            // 
             for (int i = 0; i < label0.size; ++i)
             {
                 for (int j = 0; j <= nz_; ++j)
@@ -389,7 +391,7 @@ int main(int argc, char **argv)
     options.arguments({
         "--ros-args",
         "--params-file",
-        "/home/unitree/ros2_ws/LeggedRobot/src/Ros2Tools/config.yaml"
+        "/home/smx/WorkSpace/GDS_LeggedRobot/src/Ros2Tools/config.yaml"
     });
 
     auto node = std::make_shared<DroneEstimatorNode>(options);

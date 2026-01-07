@@ -12,7 +12,7 @@ from std_msgs.msg import Float64MultiArray  # ← 新增
 # ----------------------------------------------------------
 # 1. 读取 YAML 并生成 parameter_overrides
 # ----------------------------------------------------------
-CFG_PATH = Path('/home/unitree/ros2_ws/LeggedRobot/src/Ros2Tools/config.yaml')
+CFG_PATH = Path('/home/smx/WorkSpace/GDS_LeggedRobot/src/Ros2Tools/config.yaml')
 if not CFG_PATH.is_file():
     raise FileNotFoundError(f'配置文件不存在: {CFG_PATH}')
 

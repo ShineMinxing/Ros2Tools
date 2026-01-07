@@ -16,7 +16,19 @@ control_loop_node_250517:
   ros__parameters:
     # 输入话题名
     TARGET_ANGLE_TOPIC:  "SMX/BTAngle"
-    ANGLE_ERROR_TOPIC:   "SMX/TargetImageAngle"
+    ANGLE_ERROR_TOPIC:   "SMX/Drone_Target"
+    VEHICLE_ANGLE_TOPIC: "SMX/Odom"
+    GIMBAL_ANGLE_TOPIC:  "SMX/GimbalState"
+    ANGLE_RESET_TOPIC:   "SMX/SportCmd"
+    # 输出话题名
+    VEHICLE_CMD_TOPIC:   "SMX/SportCmd"
+    GIMBAL_CMD_TOPIC:    "SMX/SportCmd"
+
+control_loop_node_260107:
+  ros__parameters:
+    # 输入话题名
+    TARGET_ANGLE_TOPIC:  "SMX/BTAngle"
+    ANGLE_ERROR_TOPIC:   "SMX/Drone_Target"
     VEHICLE_ANGLE_TOPIC: "SMX/Odom"
     GIMBAL_ANGLE_TOPIC:  "SMX/GimbalState"
     ANGLE_RESET_TOPIC:   "SMX/SportCmd"
@@ -30,30 +42,30 @@ control_message_node:
     sport_cmd_topic: "SMX/SportCmd"
     # 如果报错 Permission denied 则 sudo usermod -aG input $USER 再reboot
     # wasd 上下左右 Alt Space J K L ; 对应8个Axes，1~8对应8个Button
-    Keyboard2Joystick_Enable: false
+    Keyboard2Joystick_Enable: true
     keyboard_cmd_rate_hz: 20.0
 
 drone_estimator_node:
   ros__parameters:
-    input_obs_topic: /SMX/YOLO_Targets
-    output_state_topic: /SMX/DroneStateEstimate2
+    input_obs_topic: /SMX/Drone_Target
+    output_state_topic: /SMX/DroneStateEstimate
     score_threshold: 1.0
     g: 9.8
     drag_k: 0.0123
     c_int: 81.3
-    parent_frame_id: "map"
-    child_frame_id: "uav_offline"
-    rviz_mesh_resource: "/home/unitree/ros2_ws/LeggedRobot/src/Ros2Tools/drone_estimator/src/Drone.STL"
+    parent_frame_id: "map_0"
+    child_frame_id: "UAV"
+    rviz_mesh_resource: "/home/smx/WorkSpace/GDS_LeggedRobot/src/Ros2Tools/drone_estimator/src/Drone.STL"
     rviz_scale: [0.003, 0.003, 0.003]
     rviz_color: [1.0, 1.0, 0.0, 1.0]
-    rviz_ns: "drone_estimator_offline"
+    rviz_ns: "drone_estimator"
 
 rosbagtopic_rename_node:
   ros__parameters:
     # 输入包：就是 ros2 bag info 里看到的那个目录（不是 .db3 文件）
-    input_bag: "/home/unitree/ros2_ws/LeggedRobot/src/Ros2SLAM/local/go2_slam_bag"
+    input_bag: "/home/smx/WorkSpace/GDS_LeggedRobot/src/Ros2SLAM/local/go2_slam_bag"
     # 输出包目录：脚本会创建一个新的 bag（如果已经存在就报错退出）
-    output_bag: "/home/unitree/ros2_ws/LeggedRobot/src/Ros2SLAM/local/go2_slam_bag_0"
+    output_bag: "/home/smx/WorkSpace/GDS_LeggedRobot/src/Ros2SLAM/local/go2_slam_bag_0"
     # 多个 topic 的映射表：旧名 -> 新名
     topic_mappings:
       "/SMX/Go2Lidar": "/points2"

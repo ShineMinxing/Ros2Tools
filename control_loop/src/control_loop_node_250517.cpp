@@ -111,8 +111,8 @@ private:
   {
     if (auto_track_enable ==1 && msg->data.size() >= 2) {
       roll_error  = 0;
-      pitch_error = msg->data[1] * M_PI / 180.0;
-      yaw_error   = -msg->data[0] * M_PI / 180.0;
+      pitch_error = msg->data[1];
+      yaw_error   = -msg->data[0];
 
       roll_optic  = roll_gimbal + roll_vehicle;
       pitch_optic = pitch_gimbal + pitch_vehicle;
@@ -273,9 +273,9 @@ private:
       return;
     }
     
-    if (std::fabs(yaw_error + yaw_gimbal) > M_PI/4 && dt.count() < Max_Intervel) {
+    if (std::fabs(yaw_error + yaw_gimbal) > M_PI/8 && dt.count() < Max_Intervel) {
       robot_turning_start = 1;
-      robot_motion_yaw = std::clamp((yaw_error + yaw_gimbal)*1.0, -1.0, 1.0);
+      robot_motion_yaw = std::clamp((yaw_error + yaw_gimbal)*5.0, -1.0, 1.0);
       vehicle_action_pub_fun(25202123, 0.0, 0.0, robot_motion_yaw, 0.0);
 
       // RCLCPP_INFO(get_logger(), "运动P控制器2.\n"
@@ -297,30 +297,30 @@ private:
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
 
-    // // 姿态I控制器
-    // if ((std::fabs(yaw_error + yaw_gimbal) > 0.3 || std::fabs(pitch_error + pitch_gimbal) > 0.3) && dt.count() < Max_Intervel) {
-    //   robot_posture_start = 1;
-    //   robot_posture_yaw   =std::clamp(robot_posture_yaw + (yaw_error + yaw_gimbal)*0.02, -0.5,0.5);
-    //   robot_posture_pitch =std::clamp(robot_posture_pitch + (pitch_error + pitch_gimbal)*0.02,-0.5,0.5);
-    //   vehicle_action_pub_fun(22232400, robot_posture_yaw, robot_posture_pitch,0.0,0.0);
-    //   // RCLCPP_INFO(get_logger(), "运动P控制器3.\n"
-    //   //   "  roll_target: %lf, pitch_target: %lf, yaw_target: %lf,\n"
-    //   //   "  roll_optic: %lf, pitch_optic: %lf, yaw_optic: %lf,\n"
-    //   //   "  roll_vehicle: %lf, pitch_vehicle: %lf, yaw_vehicle: %lf.\n"
-    //   //   "  roll_error: %lf, pitch_error: %lf, yaw_error: %lf,\n",
-    //   //   roll_target, pitch_target, yaw_target,
-    //   //   roll_optic, pitch_optic, yaw_optic,
-    //   //   roll_vehicle, pitch_vehicle, yaw_vehicle,
-    //   //   roll_error, pitch_error, yaw_error);
-    // }
-    // else if(robot_posture_start)
-    // {
-    //   robot_posture_start = 0;
-    //   robot_posture_yaw = 0;
-    //   robot_posture_pitch = 0;
-    //   vehicle_action_pub_fun(22232400, 0.0, 0.0, 0.0, 0.0);
-    //   std::this_thread::sleep_for(std::chrono::milliseconds(30));
-    // }
+    // 姿态I控制器
+    if ((std::fabs(yaw_error + yaw_gimbal) > 0.3 || std::fabs(pitch_error + pitch_gimbal) > 0.3) && dt.count() < Max_Intervel) {
+      robot_posture_start = 1;
+      robot_posture_yaw   =std::clamp(robot_posture_yaw + (yaw_error + yaw_gimbal)*0.02, -M_PI/8,M_PI/8);
+      robot_posture_pitch =std::clamp(robot_posture_pitch + (pitch_error + pitch_gimbal)*0.02,-0.5,0.5);
+      vehicle_action_pub_fun(22232400, robot_posture_yaw, robot_posture_pitch,0.0,0.0);
+      // RCLCPP_INFO(get_logger(), "运动P控制器3.\n"
+      //   "  roll_target: %lf, pitch_target: %lf, yaw_target: %lf,\n"
+      //   "  roll_optic: %lf, pitch_optic: %lf, yaw_optic: %lf,\n"
+      //   "  roll_vehicle: %lf, pitch_vehicle: %lf, yaw_vehicle: %lf.\n"
+      //   "  roll_error: %lf, pitch_error: %lf, yaw_error: %lf,\n",
+      //   roll_target, pitch_target, yaw_target,
+      //   roll_optic, pitch_optic, yaw_optic,
+      //   roll_vehicle, pitch_vehicle, yaw_vehicle,
+      //   roll_error, pitch_error, yaw_error);
+    }
+    else if(robot_posture_start)
+    {
+      robot_posture_start = 0;
+      robot_posture_yaw = 0;
+      robot_posture_pitch = 0;
+      vehicle_action_pub_fun(22232400, 0.0, 0.0, 0.0, 0.0);
+      std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    }
   }
 
   void vehicle_action_pub_fun(double code, double p1, double p2, double p3, double p4)
@@ -372,7 +372,7 @@ int main(int argc, char ** argv)
   options.arguments({
     "--ros-args",
     "--params-file",
-    "/home/unitree/ros2_ws/LeggedRobot/src/Ros2Tools/config.yaml"
+    "/home/smx/WorkSpace/GDS_LeggedRobot/src/Ros2Tools/config.yaml"
   });
   auto node = std::make_shared<ControlLoopNode>(options);
   rclcpp::spin(node);

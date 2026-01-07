@@ -396,7 +396,7 @@ int main(int argc, char ** argv)
      .arguments({
        "--ros-args",
        "--params-file",
-       "/home/unitree/ros2_ws/LeggedRobot/src/Ros2Tools/config.yaml"
+       "/home/smx/WorkSpace/GDS_LeggedRobot/src/Ros2Tools/config.yaml"
      });
 
   rclcpp::spin(std::make_shared<ControlMessageNode>(opt));
